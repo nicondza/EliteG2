@@ -1,0 +1,3957 @@
+        // Configuración de tu proyecto de Firebase
+        const firebaseConfig = {
+            apiKey: "AIzaSyAcW679YdIT03pyq8IgKKnR8oyO4_fvpFs",
+            authDomain: "g2elite-a3b85.firebaseapp.com",
+            databaseURL: "https://g2elite-a3b85-default-rtdb.firebaseio.com/",
+            projectId: "g2elite-a3b85",
+            storageBucket: "g2elite-a3b85.firebasestorage.app",
+            messagingSenderId: "951346482286",
+            appId: "1:951346482286:web:6001135252de2a4d982a7f",
+        };
+
+        // Inicializar Firebase
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const db = firebase.database();
+        const { useState, useEffect, useMemo, useRef } = React;
+
+        const GALLERY_LABELS = ['C', 'P', 'B', 'N', 'S', 'E', 'X'];
+        const GALLERY_VIEW_MODES = ['PERSONAJE', 'ETIQUETA', 'CARPETA', 'GENERAL'];
+        const GALLERY_VIEW_MODE_LABELS = {
+            PERSONAJE: 'Personaje',
+            ETIQUETA: 'Etiqueta',
+            CARPETA: 'Carpetas',
+            GENERAL: 'General'
+        };
+        const BATTLE_PHOTO_SLOTS = [
+            { id: 'pechos', label: 'Pechos', labels: ['P'] },
+            { id: 'colaPiernas', label: 'Cola/Piernas', labels: ['C'] },
+            { id: 'cuerpoCintura', label: 'Cuerpo/Cintura', labels: ['N', 'B'] },
+            { id: 'sensualidad', label: 'Sensualidad', labels: ['E', 'S'] }
+        ];
+        const BATTLE_ARENA_TO_SLOT = {
+            pecho: 'pechos',
+            pechos: 'pechos',
+            cola: 'colaPiernas',
+            piernas: 'colaPiernas',
+            cuerpo: 'cuerpoCintura',
+            cintura: 'cuerpoCintura',
+            sensualidad: 'sensualidad'
+        };
+        const getDefaultBattlePhotoPreferences = () => (
+            BATTLE_PHOTO_SLOTS.reduce((acc, slot) => {
+                acc[slot.id] = '';
+                return acc;
+            }, {})
+        );
+        const sanitizeBattlePhotoPreferences = (prefs = {}) => {
+            const defaults = getDefaultBattlePhotoPreferences();
+            const candidate = prefs && typeof prefs === 'object' ? prefs : {};
+            return Object.keys(defaults).reduce((acc, key) => {
+                acc[key] = typeof candidate[key] === 'string' ? candidate[key].trim() : '';
+                return acc;
+            }, { ...defaults });
+        };
+        const getBattleSlotById = (slotId = '') => BATTLE_PHOTO_SLOTS.find((slot) => slot.id === slotId);
+        const getBattleSlotForArena = (arenaName = '') => BATTLE_ARENA_TO_SLOT[(arenaName || '').trim().toLowerCase()] || '';
+        const getCompatibleBattleSlotsForLabel = (label = '') => BATTLE_PHOTO_SLOTS.filter((slot) => slot.labels.includes(label));
+        const GALLERY_LABEL_STYLES = {
+            C: {
+                bg: 'linear-gradient(135deg, rgba(34,211,238,0.92), rgba(14,116,144,0.95))',
+                border: 'rgba(103,232,249,0.95)',
+                glow: 'rgba(34,211,238,0.8)',
+                text: '#ecfeff'
+            },
+            P: {
+                bg: 'linear-gradient(135deg, rgba(244,114,182,0.92), rgba(157,23,77,0.95))',
+                border: 'rgba(251,207,232,0.95)',
+                glow: 'rgba(244,114,182,0.78)',
+                text: '#fff1f2'
+            },
+            B: {
+                bg: 'linear-gradient(135deg, rgba(251,191,36,0.94), rgba(180,83,9,0.95))',
+                border: 'rgba(253,224,71,0.98)',
+                glow: 'rgba(251,191,36,0.82)',
+                text: '#fffbea'
+            },
+            N: {
+                bg: 'linear-gradient(135deg, rgba(163,230,53,0.92), rgba(63,98,18,0.95))',
+                border: 'rgba(217,249,157,0.95)',
+                glow: 'rgba(163,230,53,0.78)',
+                text: '#f7fee7'
+            },
+            S: {
+                bg: 'linear-gradient(135deg, rgba(192,132,252,0.92), rgba(107,33,168,0.95))',
+                border: 'rgba(233,213,255,0.95)',
+                glow: 'rgba(192,132,252,0.8)',
+                text: '#faf5ff'
+            },
+            E: {
+                bg: 'linear-gradient(135deg, rgba(248,113,113,0.92), rgba(153,27,27,0.95))',
+                border: 'rgba(254,202,202,0.95)',
+                glow: 'rgba(248,113,113,0.8)',
+                text: '#fef2f2'
+            },
+            X: {
+                bg: 'linear-gradient(135deg, rgba(239,68,68,0.98), rgba(127,29,29,0.98))',
+                border: 'rgba(254,226,226,1)',
+                glow: 'rgba(239,68,68,0.95)',
+                text: '#fff7f7'
+            },
+            DEFAULT: {
+                bg: 'linear-gradient(135deg, rgba(51,65,85,0.92), rgba(15,23,42,0.95))',
+                border: 'rgba(148,163,184,0.85)',
+                glow: 'rgba(148,163,184,0.45)',
+                text: '#f8fafc'
+            }
+        };
+        const clampIndex = (index, total) => {
+            if (!total) return 0;
+            return (index + total) % total;
+        };
+        const getNextPlayableIndex = (currentIndex, items, useRandom = false) => {
+            const total = Array.isArray(items) ? items.length : 0;
+            if (!total) return null;
+            if (total === 1) return 0;
+
+            if (useRandom) {
+                const candidateIndexes = items
+                    .map((item, idx) => ({ item, idx }))
+                    .filter(({ item, idx }) => idx !== currentIndex && item && item.url)
+                    .map(({ idx }) => idx);
+                if (!candidateIndexes.length) return clampIndex((currentIndex ?? 0) + 1, total);
+                return candidateIndexes[Math.floor(Math.random() * candidateIndexes.length)];
+            }
+
+            return clampIndex((currentIndex ?? 0) + 1, total);
+        };
+        const getGalleryLabelStyle = (label) => GALLERY_LABEL_STYLES[label] || GALLERY_LABEL_STYLES.DEFAULT;
+        const getGalleryFilterButtonStyle = (label, isActive = false) => {
+            const styleForLabel = label === 'INICIAL'
+                ? GALLERY_LABEL_STYLES.DEFAULT
+                : label === '100'
+                    ? GALLERY_LABEL_STYLES.B
+                    : getGalleryLabelStyle(label);
+            return {
+                '--btn-neon-color': styleForLabel.glow,
+                borderColor: styleForLabel.border,
+                color: styleForLabel.text,
+                boxShadow: isActive
+                    ? `inset 0 1px 0 rgba(186,230,253,0.35), 0 0 0 1px ${styleForLabel.border}, 0 0 20px ${styleForLabel.glow}`
+                    : `inset 0 1px 0 rgba(186,230,253,0.2), 0 0 0 1px color-mix(in srgb, ${styleForLabel.border} 65%, rgba(15,23,42,0.65) 35%), 0 0 12px color-mix(in srgb, ${styleForLabel.glow} 60%, transparent)`,
+                textShadow: `0 0 8px color-mix(in srgb, ${styleForLabel.glow} 70%, transparent)`,
+                filter: isActive ? 'brightness(1.14)' : 'brightness(1)'
+            };
+        };
+        const VIDEO_FILE_REGEX = /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i;
+        const GIF_FILE_REGEX = /\.gif(\?.*)?$/i;
+        const YOUTUBE_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i;
+        const VIMEO_REGEX = /vimeo\.com\/(?:video\/)?(\d+)/i;
+        const getVideoEmbedInfo = (url) => {
+            const normalizedUrl = (url || '').trim();
+            if (!normalizedUrl) return null;
+
+            const youtubeMatch = normalizedUrl.match(YOUTUBE_REGEX);
+            if (youtubeMatch) {
+                return {
+                    provider: 'youtube',
+                    src: `https://www.youtube.com/embed/${youtubeMatch[1]}`,
+                    title: 'Video de YouTube'
+                };
+            }
+
+            const vimeoMatch = normalizedUrl.match(VIMEO_REGEX);
+            if (vimeoMatch) {
+                return {
+                    provider: 'vimeo',
+                    src: `https://player.vimeo.com/video/${vimeoMatch[1]}`,
+                    title: 'Video de Vimeo'
+                };
+            }
+
+            return null;
+        };
+        const BLOCKED_MEDIA_HOST_PATTERNS = ['eporner.com'];
+        const isBlockedMediaUrl = (rawUrl = '') => {
+            const normalized = String(rawUrl || '').trim();
+            if (!normalized || normalized.startsWith('data:') || normalized.startsWith('blob:')) return false;
+            try {
+                const parsed = new URL(normalized);
+                const host = parsed.hostname.toLowerCase();
+                return BLOCKED_MEDIA_HOST_PATTERNS.some((pattern) => host === pattern || host.endsWith(`.${pattern}`));
+            } catch {
+                return false;
+            }
+        };
+        const getSafeImageSrc = (rawUrl = '', fallback = '') => {
+            const normalized = String(rawUrl || '').trim();
+            if (!normalized || isBlockedMediaUrl(normalized)) return fallback;
+            return normalized;
+        };
+        const detectGalleryItemType = (url = '', explicitType = '') => {
+            if (explicitType === 'video' || explicitType === 'image') return explicitType;
+            const normalizedUrl = (url || '').trim();
+            if (VIDEO_FILE_REGEX.test(normalizedUrl) || getVideoEmbedInfo(normalizedUrl)) {
+                return 'video';
+            }
+            return 'image';
+        };
+        const normalizeGalleryItem = (item, fallbackType = '') => {
+            if (typeof item === 'string') {
+                return {
+                    url: getSafeImageSrc(item.trim(), ''),
+                    label: '',
+                    type: detectGalleryItemType(item, fallbackType)
+                };
+            }
+            if (item && typeof item === 'object') {
+                const url = getSafeImageSrc((item.url || '').trim(), '');
+                return {
+                    url,
+                    label: GALLERY_LABELS.includes(item.label) ? item.label : '',
+                    type: detectGalleryItemType(url, item.type || fallbackType)
+                };
+            }
+            return { url: '', label: '', type: detectGalleryItemType('', fallbackType) };
+        };
+        const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
+        const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
+        const getGalleryItemType = (item) => normalizeGalleryItem(item).type;
+        const getBattlePhotoForArena = (profile, arenaName) => {
+            const normalizedArena = (arenaName || '').trim().toLowerCase();
+            const galleryImages = Array.isArray(profile?.galeria?.fotos)
+                ? profile.galeria.fotos
+                    .map((item) => normalizeGalleryItem(item, 'image'))
+                    .filter((item) => item.type === 'image' && item.url)
+                : [];
+            const profilePhoto = getSafeImageSrc(profile?.fotos?.[0], '');
+            const fallbackPhoto = profilePhoto || 'https://via.placeholder.com/400x500';
+
+            const useProfilePhotoArenas = new Set([
+                'rostro', 'ojos', 'boca', 'cabello',
+                'carisma', 'elegancia', 'dulzura', 'talento',
+                'estatura'
+            ]);
+
+            if (useProfilePhotoArenas.has(normalizedArena)) {
+                return fallbackPhoto;
+            }
+
+            const getRandomByLabels = (labels = []) => {
+                const candidates = galleryImages.filter((item) => labels.includes(getGalleryItemLabel(item)));
+                if (!candidates.length) return '';
+                const randomIndex = Math.floor(Math.random() * candidates.length);
+                return candidates[randomIndex]?.url || '';
+            };
+
+            const slotId = getBattleSlotForArena(normalizedArena);
+            const slotConfig = getBattleSlotById(slotId);
+            if (!slotConfig) return fallbackPhoto;
+
+            const preferences = sanitizeBattlePhotoPreferences(profile?.batallaFotosPreferidas);
+            const preferredUrl = preferences[slotId];
+            if (preferredUrl) {
+                const preferredExists = galleryImages.some((item) => item.url === preferredUrl && slotConfig.labels.includes(getGalleryItemLabel(item)));
+                if (preferredExists) {
+                    return preferredUrl;
+                }
+            }
+
+            const selectedPhoto = getRandomByLabels(slotConfig.labels);
+
+            return selectedPhoto || fallbackPhoto;
+        };
+        const isGifUrl = (url = '') => GIF_FILE_REGEX.test((url || '').trim());
+        const CRYING_EMOJI_FALLBACK = "data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%20256%20256%27%3E%3Crect%20width%3D%27256%27%20height%3D%27256%27%20rx%3D%2740%27%20fill%3D%27%23020617%27/%3E%3Ctext%20x%3D%27128%27%20y%3D%27152%27%20text-anchor%3D%27middle%27%20font-size%3D%27120%27%3E%F0%9F%98%A2%3C/text%3E%3C/svg%3E";
+        const BROKEN_IMAGE_INLINE_HANDLER = `if(this.dataset.fallbackApplied==='true')return;this.dataset.fallbackApplied='true';this.src='${CRYING_EMOJI_FALLBACK}';this.style.objectFit='contain';this.style.padding='12px';this.style.background='#020617';this.alt='Imagen no disponible';`;
+        const applyCryingEmojiFallback = (event) => {
+            const img = event?.currentTarget || event?.target;
+            if (!img || img.dataset.fallbackApplied === 'true') return;
+            img.dataset.fallbackApplied = 'true';
+            img.src = CRYING_EMOJI_FALLBACK;
+            img.style.objectFit = 'contain';
+            img.style.padding = '12px';
+            img.style.background = '#020617';
+            img.alt = 'Imagen no disponible';
+        };
+
+        const STORAGE_KEY = 'g2_elite_database_v4';
+        const CAT_STORAGE_KEY = 'g2_elite_categories_v4';
+        const CARACTERISTICAS = [
+            'Rostro', 'Ojos', 'Boca', 'Cabello',
+            'Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura',
+            'Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento'
+        ];
+        const ARENAS = [...CARACTERISTICAS];
+        const createZeroScores = () => CARACTERISTICAS.reduce((acc, item) => {
+            acc[item] = 0;
+            return acc;
+        }, {});
+        const INITIAL_CATEGORIES = [];
+        const PROFESIONES_CONFIG = {
+            'Cantante': { glyph: 'crown', color: 'rgba(34, 211, 238, 0.8)', tailwind: 'cyan-400' },
+            'Actriz': { glyph: 'theater', color: 'rgba(34, 197, 94, 0.8)', tailwind: 'green-500' },
+            'Modelo': { glyph: 'floron', color: 'rgba(168, 85, 247, 0.8)', tailwind: 'purple-500' },
+            'NSFW': { glyph: 'torch', color: 'rgba(239, 68, 68, 0.8)', tailwind: 'red-500' },
+            'Influencer': { glyph: 'sigil', color: 'rgba(236, 72, 153, 0.8)', tailwind: 'pink-500' },
+            'Periodista': { glyph: 'quill', color: 'rgba(234, 179, 8, 0.8)', tailwind: 'yellow-500' },
+            'Bailarina': { glyph: 'floron', color: 'rgba(249, 115, 22, 0.8)', tailwind: 'orange-500' },
+            'Atleta': { glyph: 'shield', color: 'rgba(59, 130, 246, 0.8)', tailwind: 'blue-500' },
+            'Otro': { glyph: 'sigil', color: 'rgba(148, 163, 184, 0.8)', tailwind: 'slate-400' }
+        };
+        const getProfessionGlyph = (profession = '') => {
+            const lowP = String(profession || '').toLowerCase();
+            if (lowP.includes('cantante')) return 'crown';
+            if (lowP.includes('nsfw')) return 'torch';
+            if (lowP.includes('actriz') || lowP.includes('actor')) return 'theater';
+            if (lowP.includes('modelo')) return 'floron';
+            if (lowP.includes('influencer')) return 'sigil';
+            if (lowP.includes('periodista')) return 'quill';
+            if (lowP.includes('bailarina')) return 'floron';
+            if (lowP.includes('atleta')) return 'shield';
+            return 'shield';
+        };
+        const getEmoji = (profession = '') => {
+            const lowP = String(profession || '').toLowerCase();
+            if (lowP.includes('cantante')) return '🎤';
+            if (lowP.includes('nsfw')) return '🔥';
+            if (lowP.includes('actriz') || lowP.includes('actor')) return '🎬';
+            if (lowP.includes('modelo')) return '👠';
+            if (lowP.includes('influencer')) return '📱';
+            if (lowP.includes('periodista')) return '👓';
+            if (lowP.includes('bailarina')) return '💃';
+            if (lowP.includes('atleta')) return '🏋️‍♀️';
+            return '📖';
+        };
+
+        const HeraldicGlyph = ({ variant = 'sigil', size = 18, className = '', tint = 'currentColor' }) => {
+            const common = {
+                width: size,
+                height: size,
+                viewBox: '0 0 24 24',
+                fill: 'none',
+                xmlns: 'http://www.w3.org/2000/svg',
+                className
+            };
+
+            if (variant === 'crown') {
+                return <svg {...common} stroke={tint} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 17h18v3H3z"/><path d="M4 17l3-8 5 5 5-7 3 10"/></svg>;
+            }
+            if (variant === 'shield') {
+                return <svg {...common} stroke={tint} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l7 3v6c0 4.3-2.4 7-7 9-4.6-2-7-4.7-7-9V6l7-3z"/><path d="M9.5 11h5M12 8.5v5"/></svg>;
+            }
+            if (variant === 'floron') {
+                return <svg {...common} stroke={tint} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M12 4v16"/><path d="M6 9c1.4 0 2.8.9 3.4 2.2C8.2 11.5 7 12.8 7 14.3 5.4 13.5 4.3 11.9 4.3 10 4.3 9.5 5 9 6 9z"/><path d="M18 9c-1.4 0-2.8.9-3.4 2.2 1.2.3 2.4 1.6 2.4 3.1 1.6-.8 2.7-2.4 2.7-4.3 0-.5-.7-1-1.7-1z"/><circle cx="12" cy="12" r="2.2"/></svg>;
+            }
+            if (variant === 'quill') {
+                return <svg {...common} stroke={tint} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M20 4c-7 1-11.5 5.2-13 12l4-1 1 4c6.8-2.4 8.4-8.4 8-15z"/><path d="M8 16l-4 4"/></svg>;
+            }
+            if (variant === 'torch') {
+                return <svg {...common} stroke={tint} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M9 13l6-6"/><path d="M8 14l2 2 2-2-2-2z"/><path d="M11 16l-4 5h10l-4-5"/><path d="M15.5 4.5c.9 1.3.5 3.2-1 4.3-1.5-1.4-1.8-3.3-.8-4.9.6.1 1.2.3 1.8.6z"/></svg>;
+            }
+            if (variant === 'theater') {
+                return <svg {...common} stroke={tint} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M5 6h14v11a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M9 11h.01M15 11h.01"/><path d="M8.5 15c1 .8 2.2 1.2 3.5 1.2s2.5-.4 3.5-1.2"/></svg>;
+            }
+            return <svg {...common} stroke={tint} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 6v12M6 12h12"/></svg>;
+        };
+
+        const LucideIcon = ({ name, size = 20, className = "" }) => {
+            return (
+                <i
+                    data-lucide={name.toLowerCase().replace(/([a-z])([A-Z])/g, '$1-$2')}
+                    style={{ width: size, height: size }}
+                    className={`inline-block ${className}`}
+                ></i>
+            );
+        };
+
+        const renderGalleryWindow = ({ targetWindow, profileName, profession, photos, editingId, battlePhotoPrefs = {} }) => {
+            if (!targetWindow || targetWindow.closed) return;
+            const safeBattlePhotoPrefs = sanitizeBattlePhotoPreferences(battlePhotoPrefs);
+
+            const fotosGaleria = (photos || []).map((item, index) => {
+                const normalizedItem = normalizeGalleryItem(item);
+                return {
+                    ...normalizedItem,
+                    sourceTag: item?.sourceTag || (normalizedItem.type === 'video' ? 'videos' : 'fotos'),
+                    sourceIndex: typeof item?.sourceIndex === 'number' ? item.sourceIndex : index
+                };
+            }).filter(item => item.url);
+
+            targetWindow.document.open();
+            targetWindow.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Galería de ${profileName}</title>
+                <style>
+                    body {
+                        background:
+                            radial-gradient(circle at 20% 18%, rgba(255, 208, 140, 0.14), transparent 32%),
+                            radial-gradient(circle at 82% 8%, rgba(184, 115, 51, 0.17), transparent 28%),
+                            linear-gradient(180deg, #120f0a 0%, #1d160f 45%, #271b12 100%);
+                        color: #f7ebd2;
+                        font-family: 'Cinzel', 'Plus Jakarta Sans', serif;
+                        padding: 40px;
+                        margin: 0;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                    }
+                    .btn-critical-plate {
+                        position: fixed;
+                        top: 20px;
+                        right: 30px;
+                        padding: 10px 20px;
+                        color: #ff3131;
+                        font-weight: 800;
+                        font-size: 11px;
+                        text-transform: uppercase;
+                        letter-spacing: 2px;
+                        background: #020617;
+                        border: 2px solid #ff3131;
+                        border-radius: 12px;
+                        cursor: pointer;
+                        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), inset 0 0 0 2px rgba(255, 49, 49, 0.22), 4px 4px 0px #660000;
+                        transition: all 0.3s ease;
+                        text-shadow: 0 0 8px #ff3131;
+                        z-index: 999;
+                    }
+                    .btn-critical-plate:hover {
+                        background: #ff3131;
+                        color: white;
+                        box-shadow: inset 0 1px 0 rgba(255,255,255,0.4), 0 0 20px rgba(255,49,49,0.5);
+                        transform: translateY(-1px);
+                    }
+                    .modal-url {
+                        display: none;
+                        position: fixed;
+                        top: 50%;
+                        left: 50%;
+                        transform: translate(-50%, -50%);
+                        background: #0f172a;
+                        padding: 30px;
+                        border-radius: 18px;
+                        border: 1px solid rgba(100, 116, 139, 0.45);
+                        box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.18), 0 24px 48px rgba(0,0,0,0.55);
+                        z-index: 1000;
+                        width: 350px;
+                    }
+                    input {
+                        width: 100%;
+                        padding: 12px;
+                        margin-top: 15px;
+                        background: #020617;
+                        border: 1px solid #334155;
+                        color: #22d3ee;
+                        border-radius: 8px;
+                        outline: none;
+                    }
+                    h1 { font-size: 2.5rem; font-weight: 800; margin-bottom: 2rem; color: #fff; text-align: center; }
+                    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 20px; width: 100%; }
+                    .fullscreen-viewer {
+                        display: none;
+                        position: fixed;
+                        inset: 0;
+                        z-index: 2000;
+                        background:
+                            radial-gradient(circle at 50% 20%, rgba(255, 214, 153, 0.08), transparent 42%),
+                            rgba(16, 10, 4, 0.95);
+                        backdrop-filter: blur(6px);
+                    }
+                    .fullscreen-viewer.open {
+                        display: flex;
+                    }
+                    .viewer-close {
+                        position: fixed;
+                        top: 20px;
+                        right: 30px;
+                        z-index: 2100;
+                        background: rgba(15, 23, 42, 0.9);
+                        color: #f87171;
+                        border: 1px solid rgba(248, 113, 113, 0.78);
+                        border-radius: 999px;
+                        width: 48px;
+                        height: 48px;
+                        cursor: pointer;
+                        font-size: 30px;
+                        font-weight: 900;
+                        line-height: 1;
+                        font-weight: 700;
+                        box-shadow:
+                            0 6px 16px rgba(0, 0, 0, 0.55),
+                            inset 0 1px 0 rgba(255, 244, 214, 0.35),
+                            inset 0 -2px 0 rgba(48, 28, 12, 0.55);
+                        text-shadow: 0 0 6px rgba(0, 0, 0, 0.75);
+                        transition: transform 0.2s ease, box-shadow 0.2s ease, filter 0.2s ease;
+                    }
+                    .viewer-close:hover {
+                        transform: scale(1.06);
+                        filter: brightness(1.08);
+                        box-shadow:
+                            0 8px 18px rgba(0, 0, 0, 0.62),
+                            inset 0 1px 0 rgba(255, 244, 214, 0.42),
+                            inset 0 -2px 0 rgba(48, 28, 12, 0.62);
+                    }
+                    .viewer-close:focus-visible,
+                    .viewer-nav:focus-visible {
+                        outline: 3px solid #ffe0a8;
+                        outline-offset: 3px;
+                    }
+                    .viewer-stage {
+                        position: relative;
+                        width: 100%;
+                        height: 100vh;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        padding: 32px 24px 112px;
+                        box-sizing: border-box;
+                    }
+                    .viewer-slide {
+                        display: none;
+                        width: 100%;
+                        height: 100%;
+                        align-items: center;
+                        justify-content: center;
+                    }
+                    .viewer-slide.active {
+                        display: flex;
+                    }
+                    .viewer-slide img {
+                        max-width: min(92vw, 1400px);
+                        max-height: calc(100vh - 64px);
+                        width: auto;
+                        height: auto;
+                        object-fit: contain;
+                        border-radius: 20px;
+                        border: 3px solid #c8a167;
+                        box-shadow:
+                            0 24px 52px rgba(0, 0, 0, 0.64),
+                            0 0 0 3px rgba(83, 55, 27, 0.8),
+                            inset 0 0 24px rgba(255, 223, 171, 0.12);
+                    }
+                    .viewer-nav {
+                        position: fixed;
+                        bottom: 26px;
+                        z-index: 2100;
+                        width: 44px;
+                        height: 44px;
+                        border-radius: 50%;
+                        border: 2px solid #d8b374;
+                        background: linear-gradient(180deg, #624021 0%, #3a2512 100%);
+                        color: #fff7e6;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        cursor: pointer;
+                        font-size: 28px;
+                        font-weight: 900;
+                        line-height: 1;
+                        text-shadow: 0 0 5px rgba(0, 0, 0, 0.72);
+                        box-shadow:
+                            0 6px 16px rgba(0, 0, 0, 0.55),
+                            inset 0 1px 0 rgba(255, 244, 214, 0.34),
+                            inset 0 -2px 0 rgba(48, 28, 12, 0.55);
+                        transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease, filter 0.2s ease;
+                    }
+                    .viewer-nav:hover {
+                        transform: scale(1.06);
+                        border-color: #f0c883;
+                        color: #fff7e6;
+                        filter: brightness(1.1);
+                    }
+                    .viewer-nav.prev {
+                        left: 24px;
+                    }
+                    .viewer-nav.next {
+                        right: 24px;
+                    }
+                    .viewer-nav[disabled] {
+                        opacity: 0.62;
+                        cursor: default;
+                        filter: grayscale(0.28);
+                    }
+                    .viewer-nav[disabled]:hover {
+                        transform: none;
+                        border-color: #d8b374;
+                        color: #fff7e6;
+                        filter: grayscale(0.28);
+                    }
+                    .viewer-hint {
+                        position: fixed;
+                        left: 50%;
+                        bottom: 28px;
+                        transform: translateX(-50%);
+                        z-index: 2100;
+                        padding: 10px 16px;
+                        border-radius: 999px;
+                        background: rgba(43, 29, 16, 0.72);
+                        color: #f6e7ca;
+                        border: 1px solid rgba(201, 162, 98, 0.72);
+                        font-size: 12px;
+                        letter-spacing: 0.08em;
+                        text-transform: uppercase;
+                        pointer-events: none;
+                    }
+                    .viewer-controls {
+                        position: fixed;
+                        top: 24px;
+                        left: 24px;
+                        z-index: 2100;
+                        display: flex;
+                        gap: 10px;
+                    }
+                    .viewer-control-btn {
+                        border: 1px solid rgba(56, 189, 248, 0.5);
+                        background: rgba(8, 47, 73, 0.52);
+                        color: #bae6fd;
+                        border-radius: 999px;
+                        padding: 8px 14px;
+                        font-size: 10px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.2em;
+                        font-weight: 900;
+                        cursor: pointer;
+                    }
+                    .viewer-control-btn.random-active {
+                        border-color: rgba(232, 121, 249, 0.85);
+                        color: #f5d0fe;
+                        background: rgba(192, 38, 211, 0.35);
+                    }
+                    @media (max-width: 640px) {
+                        .viewer-stage {
+                            padding: 20px 16px 106px;
+                        }
+                        .viewer-close {
+                            top: 14px;
+                            right: 16px;
+                            width: 42px;
+                            height: 42px;
+                        }
+                        .viewer-nav {
+                            bottom: 18px;
+                            width: 40px;
+                            height: 40px;
+                            font-size: 22px;
+                        }
+                        .viewer-nav.prev {
+                            left: 16px;
+                        }
+                        .viewer-nav.next {
+                            right: 16px;
+                        }
+                        .viewer-hint {
+                            bottom: 20px;
+                            padding: 8px 12px;
+                            font-size: 10px;
+                            max-width: calc(100vw - 120px);
+                            text-align: center;
+                        }
+                        .viewer-controls {
+                            top: 14px;
+                            left: 14px;
+                            gap: 8px;
+                        }
+                        .viewer-control-btn {
+                            padding: 7px 10px;
+                            font-size: 9px;
+                            letter-spacing: 0.16em;
+                        }
+                    }
+                </style>
+            </head>
+            <body>
+                <h1>Galería de ${profileName}</h1>
+                <button class="btn-critical-plate" onclick="document.getElementById('miModal').style.display='block'">
+                    AGREGAR ARCHIVO
+                </button>
+
+                <div id="miModal" class="modal-url">
+                    <h2 style="margin:0; font-size: 14px; color: #94a3b8;">PEGAR URL DEL ARCHIVO</h2>
+                    <input type="text" id="nuevaFotoUrl" placeholder="https://ejemplo.com/foto.jpg o https://youtube.com/...">
+                    <label for="nuevoArchivoLocal" style="display:block; margin-top: 14px; font-size: 10px; font-weight: 900; letter-spacing: 0.14em; color: #94a3b8; text-transform: uppercase;">o subir desde escritorio</label>
+                    <input type="file" id="nuevoArchivoLocal" accept="image/*,video/*,.gif" style="width: 100%; margin-top: 8px; padding: 10px; background: #020617; border: 1px dashed rgba(34,211,238,0.65); color: #e2e8f0; border-radius: 8px; outline: none; font-size: 12px; box-shadow: 0 0 10px rgba(34,211,238,0.18);">
+                    <select id="nuevoArchivoTipo" style="width: 100%; padding: 12px; margin-top: 15px; background: #020617; border: 1px solid rgba(71,85,105,0.92); color: #e2e8f0; border-radius: 8px; outline: none; box-shadow: inset 0 1px 0 rgba(148,163,184,0.18);">
+                        <option value="image">Imagen</option>
+                        <option value="video">Video</option>
+                    </select>
+                    <select id="nuevaFotoEtiqueta" style="width: 100%; padding: 12px; margin-top: 15px; background: #020617; border: 1px solid rgba(71,85,105,0.92); color: #e2e8f0; border-radius: 8px; outline: none; box-shadow: inset 0 1px 0 rgba(148,163,184,0.18);">
+                        ${GALLERY_LABELS.map(label => `<option value="${label}">Etiqueta ${label}</option>`).join('')}
+                    </select>
+                    <button onclick="addMediaFromModal()"
+                        style="margin-top: 15px; width: 100%; padding: 10px; background: linear-gradient(180deg, rgba(14,116,144,0.95), rgba(8,47,73,0.95)); color: #ecfeff; border: 1px solid rgba(103,232,249,0.9); border-radius: 8px; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 0.08em; box-shadow: 0 0 14px rgba(34,211,238,0.4);">
+                        Guardar
+                    </button>
+                </div>
+
+                <div style="width:100%; margin-bottom: 20px; padding: 14px; border-radius: 12px; border: 1px solid rgba(148,163,184,0.28); background: rgba(2,6,23,0.45); display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px;">
+                    ${BATTLE_PHOTO_SLOTS.map((slot) => {
+                        const hasSelection = !!safeBattlePhotoPrefs[slot.id];
+                        return `
+                            <div style="border:1px solid rgba(71,85,105,0.65); border-radius:10px; padding:10px; background: rgba(15,23,42,0.75);">
+                                <div style="font-size:10px; color:#f8fafc; font-weight:900; letter-spacing:0.12em; text-transform:uppercase;">${slot.label}</div>
+                                <div style="font-size:11px; color:${hasSelection ? '#86efac' : '#94a3b8'}; margin-top:6px;">${hasSelection ? 'Foto fija elegida' : 'Modo aleatorio'}</div>
+                                <button
+                                    type="button"
+                                    onclick="event.stopPropagation(); window.opener.postMessage({type: 'CLEAR_BATTLE_PHOTO_PREF', id: '${editingId}', slotId: '${slot.id}'}, '*');"
+                                    style="margin-top:8px; width:100%; border:1px solid rgba(125,211,252,0.6); background: rgba(2,6,23,0.82); color:#e2e8f0; border-radius:8px; padding:6px 8px; font-size:10px; font-weight:800; letter-spacing:0.08em; text-transform:uppercase; cursor:pointer; box-shadow: 0 0 12px rgba(34,211,238,0.22);"
+                                >
+                                    Quitar fija
+                                </button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+
+                <div class="grid" id="galleryGrid">
+                    ${fotosGaleria.length ? fotosGaleria.map((foto, index) => {
+                    const fotoUrl = getGalleryItemUrl(foto);
+                    const fotoLabel = getGalleryItemLabel(foto);
+                    const labelStyle = getGalleryLabelStyle(fotoLabel);
+                    const config = {
+                        "CANTANTE": { color: "#0ea5e9", sombra: "rgba(14,165,233,0.8)" },
+                        "NSFW":  { color: "#ef4444", sombra: "rgba(239,68,68,0.8)" },
+                        "ACTRIZ":{ color: "#22c55e", sombra: "rgba(34,197,94,0.8)" },
+                        "MODELO": { color: "#f97316", sombra: "rgba(249,115,22,0.8)" },
+                        "BAILARINA": { color: "#a855f7", sombra: "rgba(168,85,247,0.8)" },
+                        "INFLUENCER":{ color: "#ec4899", sombra: "rgba(236,72,153,0.8)" },
+                        "PERIODISTA": { color: "#facc15", sombra: "rgba(250,204,21,0.8)" },
+                        "ATLETA":  { color: "#78350f", sombra: "rgba(120,53,15,0.8)" },
+                        "OTRO":{ color: "#ffffff", sombra: "rgba(255,255,255,0.8)" },
+                        "DEFAULT": { color: "#334155", sombra: "transparent" }
+                    };
+                    const estilo = config[profession?.toUpperCase()] || config["DEFAULT"];
+                    const compatibleSlots = getGalleryItemType(foto) === 'image' ? getCompatibleBattleSlotsForLabel(fotoLabel) : [];
+                    const battleButtons = compatibleSlots.length
+                        ? `<div style="position:absolute; left: 8px; right: 8px; bottom: 48px; z-index: 16; display:flex; flex-wrap:wrap; justify-content:center; gap:6px;">
+                            ${compatibleSlots.map((slot) => {
+                                const isSelected = safeBattlePhotoPrefs[slot.id] === fotoUrl;
+                                return `<button
+                                    onclick="event.stopPropagation(); window.opener.postMessage({type: 'SET_BATTLE_PHOTO_PREF', id: '${editingId}', slotId: '${slot.id}', index: ${foto.sourceIndex}, mediaType: '${getGalleryItemType(foto)}'}, '*');"
+                                    title="Usar en ${slot.label}"
+                                    style="border: 1px solid ${isSelected ? '#fbbf24' : 'rgba(148,163,184,0.45)'}; background: ${isSelected ? 'rgba(120,53,15,0.88)' : 'rgba(2,6,23,0.75)'}; color: ${isSelected ? '#fde68a' : '#e2e8f0'}; border-radius: 999px; padding: 4px 8px; font-size: 9px; font-weight: 900; letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;">
+                                    ${slot.label}${isSelected ? ' ✓' : ''}
+                                </button>`;
+                            }).join('')}
+                        </div>`
+                        : '';
+                    return `
+                        <div
+                            class="gallery-card"
+                            data-gallery-index="${index}"
+                            title="Abrir visor de pantalla completa"
+                            style="
+                                aspect-ratio: 1/1;
+                                border-radius: 15px;
+                                overflow: hidden;
+                                border: 2px solid ${estilo.color};
+                                box-shadow: 0 0 15px ${estilo.sombra};
+                                transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+                                cursor: pointer;
+                                position: relative;
+                                background: #0f172a;
+                            "
+                            onmouseover="this.style.transform='scale(1.08)'; this.style.boxShadow='0 0 35px ${estilo.color}, inset 0 0 15px ${estilo.sombra}'; this.style.zIndex='10';"
+                            onmouseout="this.style.transform='scale(1)'; this.style.boxShadow='0 0 15px ${estilo.sombra}'; this.style.zIndex='1';"
+                        >
+                           <button
+                            onclick="event.stopPropagation(); window.opener.postMessage({type: 'DELETE_IMAGE', index: ${foto.sourceIndex}, mediaType: '${getGalleryItemType(foto)}', id: '${editingId}'}, '*');"
+                            style="
+                                position: absolute;
+                                top: 5px;
+                                right: 5px;
+                                z-index: 20;
+                                background: #ef4444;
+                                color: white;
+                                border: none;
+                                width: 22px;
+                                height: 22px;
+                                border-radius: 50%;
+                                cursor: pointer;
+                                font-weight: bold;
+                                font-size: 12px;
+                                display: flex;
+                                align-items: center;
+                                justify-content: center;
+                                box-shadow: 0 0 10px rgba(239, 68, 68, 0.5);
+                            "
+                            aria-label="Eliminar elemento de galería"
+                            type="button"
+                        >✕</button>
+                        ${getGalleryItemType(foto) === 'video'
+                            ? (() => {
+                                const embedInfo = getVideoEmbedInfo(fotoUrl);
+                                if (embedInfo) {
+                                    return `<div style="width: 100%; height: 100%; background: radial-gradient(circle at top, rgba(34,211,238,0.35), rgba(15,23,42,0.96)); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; padding: 18px; box-sizing:border-box; text-align:center;"><div style="width:64px; height:64px; border-radius:999px; border:1px solid rgba(34,211,238,0.5); background:rgba(15,23,42,0.75); display:flex; align-items:center; justify-content:center; color:#22d3ee; font-size:28px;">▶</div><div style="font-size:12px; font-weight:800; letter-spacing:0.12em; text-transform:uppercase; color:#e2e8f0;">Video embebido</div><div style="font-size:11px; color:#94a3b8; max-width:100%; word-break:break-word;">${embedInfo.provider.toUpperCase()}</div></div>`;
+                                }
+                                return `<video src="${fotoUrl}" style="width: 100%; height: 100%; object-fit: cover;" muted playsinline preload="metadata"></video>`;
+                            })()
+                            : `<img src="${fotoUrl}" alt="Imagen de la galería" onerror="${BROKEN_IMAGE_INLINE_HANDLER}" style="width: 100%; height: 100%; object-fit: cover;" />`
+                        }
+                        <div style="position:absolute; left: 12px; top: 12px; z-index: 15; padding: 6px 10px; border-radius: 999px; background: rgba(2,6,23,0.72); border: 1px solid rgba(148,163,184,0.24); color: #e2e8f0; display:flex; align-items:center; justify-content:center; font-size: 10px; font-weight: 900; letter-spacing: 0.2em; text-transform: uppercase; backdrop-filter: blur(8px);">${getGalleryItemType(foto) === 'video' ? 'VIDEO' : 'IMG'}</div>
+                        ${battleButtons}
+                        ${fotoLabel ? `<div style="position:absolute; left: 50%; bottom: 10px; transform: translateX(-50%); z-index: 15; min-width: 52px; height: 30px; padding: 0 14px; border-radius: 999px; background: ${labelStyle.bg}; border: 1px solid ${labelStyle.border}; color: ${labelStyle.text}; display:flex; align-items:center; justify-content:center; font-size: 12px; font-weight: 900; letter-spacing: 0.24em; box-shadow: 0 0 14px ${labelStyle.glow}, 0 0 24px ${labelStyle.glow}; text-shadow: 0 0 10px ${labelStyle.glow}; backdrop-filter: blur(8px);">${fotoLabel}</div>` : ""}
+                        </div>
+                    `;
+                }).join('') : '<p style="text-align:center; grid-column: 1/-1; color: #64748b;">No hay archivos cargados.</p>'}
+                </div>
+
+                <div id="fullscreenViewer" class="fullscreen-viewer">
+                    <button class="viewer-close" onclick="closeFullscreenViewer()" aria-label="Cerrar visor">✕</button>
+                    <div class="viewer-controls">
+                        <button id="viewerPlayToggle" class="viewer-control-btn" type="button" onclick="toggleViewerAutoplay(event)">Play</button>
+                        <button id="viewerRandomToggle" class="viewer-control-btn" type="button" onclick="toggleViewerRandom(event)">Aleatorio OFF</button>
+                    </div>
+                    ${fotosGaleria.length > 1 ? `
+                        <button class="viewer-nav prev" id="viewerPrev" onclick="showPreviousViewerPhoto(event)" aria-label="Foto anterior">←</button>
+                        <button class="viewer-nav next" id="viewerNext" onclick="showNextViewerPhoto(event)" aria-label="Foto siguiente">→</button>
+                    ` : ''}
+                    <div class="viewer-hint">Usá ← → para cambiar y Escape para salir</div>
+                    <div class="viewer-stage" id="viewerStage">
+                        ${fotosGaleria.map((foto, index) => {
+                            const itemType = getGalleryItemType(foto);
+                            const embedInfo = getVideoEmbedInfo(foto.url);
+                            return `
+                            <div class="viewer-slide" id="viewer-slide-${index}">
+                                ${itemType === 'video'
+                                    ? (embedInfo
+                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" style="width:min(92vw, 1400px); height:min(75vh, 820px); border:0; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
+                                        : `<video src="${foto.url}" controls playsinline style="max-width:min(92vw, 1400px); max-height:calc(100vh - 64px); width:auto; height:auto; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;"></video>`)
+                                    : `<img src="${foto.url}" alt="Vista completa ${index + 1}" onerror="${BROKEN_IMAGE_INLINE_HANDLER}" />`
+                                }
+                            </div>`;
+                        }).join('')}
+                    </div>
+                </div>
+
+                <script>
+                    const viewer = document.getElementById('fullscreenViewer');
+                    const galleryGrid = document.getElementById('galleryGrid');
+                    const viewerSlides = Array.from(document.querySelectorAll('.viewer-slide'));
+                    const viewerPrevButton = document.getElementById('viewerPrev');
+                    const viewerNextButton = document.getElementById('viewerNext');
+                    const viewerPlayToggleButton = document.getElementById('viewerPlayToggle');
+                    const viewerRandomToggleButton = document.getElementById('viewerRandomToggle');
+                    let currentViewerIndex = 0;
+                    let viewerAutoplay = false;
+                    let viewerRandom = false;
+                    let viewerAutoplayTimeout = null;
+
+                    function resetAddMediaModalFields() {
+                        const urlInput = document.getElementById('nuevaFotoUrl');
+                        const localInput = document.getElementById('nuevoArchivoLocal');
+                        const labelInput = document.getElementById('nuevaFotoEtiqueta');
+                        const mediaTypeInput = document.getElementById('nuevoArchivoTipo');
+                        if (urlInput) urlInput.value = '';
+                        if (localInput) localInput.value = '';
+                        if (labelInput) labelInput.value = '${GALLERY_LABELS[0]}';
+                        if (mediaTypeInput) mediaTypeInput.value = 'image';
+                    }
+
+                    function addMediaFromModal() {
+                        const urlInput = document.getElementById('nuevaFotoUrl');
+                        const localInput = document.getElementById('nuevoArchivoLocal');
+                        const labelInput = document.getElementById('nuevaFotoEtiqueta');
+                        const mediaTypeInput = document.getElementById('nuevoArchivoTipo');
+                        const normalizedUrl = (urlInput?.value || '').trim();
+                        const selectedFile = localInput?.files?.[0];
+                        const mediaType = mediaTypeInput?.value || 'image';
+                        const label = labelInput?.value || '${GALLERY_LABELS[0]}';
+
+                        const postMedia = (finalUrl, finalType) => {
+                            if (!finalUrl) return;
+                            window.opener.postMessage({ type: 'ADD_IMAGE', url: finalUrl, label, mediaType: finalType, id: '${editingId}' }, '*');
+                            document.getElementById('miModal').style.display = 'none';
+                            resetAddMediaModalFields();
+                        };
+
+                        if (selectedFile) {
+                            const inferredType = selectedFile.type && selectedFile.type.startsWith('video/') ? 'video' : 'image';
+                            const reader = new FileReader();
+                            reader.onload = () => postMedia(String(reader.result || ''), inferredType);
+                            reader.onerror = () => alert('No se pudo leer el archivo seleccionado.');
+                            reader.readAsDataURL(selectedFile);
+                            return;
+                        }
+
+                        postMedia(normalizedUrl, mediaType);
+                    }
+
+                    function getNextViewerIndex() {
+                        if (viewerSlides.length <= 1) return 0;
+                        if (!viewerRandom) return (currentViewerIndex + 1) % viewerSlides.length;
+                        const candidates = viewerSlides.map((_, idx) => idx).filter((idx) => idx !== currentViewerIndex);
+                        return candidates[Math.floor(Math.random() * candidates.length)];
+                    }
+
+                    function clearViewerAutoplayTimer() {
+                        if (viewerAutoplayTimeout) {
+                            clearTimeout(viewerAutoplayTimeout);
+                            viewerAutoplayTimeout = null;
+                        }
+                    }
+
+                    function setViewerAutoplayState(nextState) {
+                        viewerAutoplay = !!nextState;
+                        if (viewerPlayToggleButton) {
+                            viewerPlayToggleButton.textContent = viewerAutoplay ? 'Pause' : 'Play';
+                        }
+                        scheduleViewerAutoplay();
+                    }
+
+                    function setViewerRandomState(nextState) {
+                        viewerRandom = !!nextState;
+                        if (viewerRandomToggleButton) {
+                            viewerRandomToggleButton.textContent = 'Aleatorio ' + (viewerRandom ? 'ON' : 'OFF');
+                            viewerRandomToggleButton.classList.toggle('random-active', viewerRandom);
+                        }
+                    }
+
+                    function scheduleViewerAutoplay() {
+                        clearViewerAutoplayTimer();
+                        if (!viewerAutoplay || !viewer.classList.contains('open') || viewerSlides.length <= 1) return;
+                        const currentSlide = viewerSlides[currentViewerIndex];
+                        const currentVideo = currentSlide ? currentSlide.querySelector('video') : null;
+                        if (currentVideo) return;
+                        viewerAutoplayTimeout = setTimeout(function() {
+                            renderViewerSlide(getNextViewerIndex());
+                        }, 7000);
+                    }
+
+                    function syncViewerButtons() {
+                        const disableNavigation = viewerSlides.length <= 1;
+                        if (viewerPrevButton) viewerPrevButton.disabled = disableNavigation;
+                        if (viewerNextButton) viewerNextButton.disabled = disableNavigation;
+                    }
+
+                    function renderViewerSlide(index) {
+                        if (!viewerSlides.length) return;
+                        currentViewerIndex = Math.max(0, Math.min(index, viewerSlides.length - 1));
+                        viewerSlides.forEach(function(slide, slideIndex) {
+                            slide.classList.toggle('active', slideIndex === currentViewerIndex);
+                        });
+                        const activeSlide = viewerSlides[currentViewerIndex];
+                        const activeImage = activeSlide ? activeSlide.querySelector('img') : null;
+                        const activeVideo = activeSlide ? activeSlide.querySelector('video') : null;
+                        if (activeVideo) {
+                            activeVideo.currentTime = 0;
+                            if (viewerAutoplay) {
+                                activeVideo.play().catch(function() {});
+                            }
+                        }
+                        if (activeImage) {
+                            activeImage.onerror = function() {
+                                if (viewerSlides.length > 1) {
+                                    renderViewerSlide(getNextViewerIndex());
+                                }
+                            };
+                        }
+                        if (activeVideo) {
+                            activeVideo.onerror = function() {
+                                if (viewerSlides.length > 1) {
+                                    renderViewerSlide(getNextViewerIndex());
+                                }
+                            };
+                            activeVideo.onended = function() {
+                                if (viewerAutoplay && viewerSlides.length > 1) {
+                                    renderViewerSlide(getNextViewerIndex());
+                                }
+                            };
+                        }
+                        syncViewerButtons();
+                        scheduleViewerAutoplay();
+                    }
+
+                    function openFullscreenViewer(index) {
+                        if (!viewerSlides.length) return;
+                        const parsedIndex = Number(index);
+                        if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= viewerSlides.length) return;
+                        viewer.classList.add('open');
+                        document.body.style.overflow = 'hidden';
+                        renderViewerSlide(parsedIndex);
+                    }
+                    function closeFullscreenViewer() {
+                        viewer.classList.remove('open');
+                        document.body.style.overflow = '';
+                        clearViewerAutoplayTimer();
+                    }
+                    function showNextViewerPhoto(event) {
+                        if (event) event.stopPropagation();
+                        if (viewerSlides.length <= 1) return;
+                        renderViewerSlide((currentViewerIndex + 1) % viewerSlides.length);
+                    }
+                    function showPreviousViewerPhoto(event) {
+                        if (event) event.stopPropagation();
+                        if (viewerSlides.length <= 1) return;
+                        renderViewerSlide((currentViewerIndex - 1 + viewerSlides.length) % viewerSlides.length);
+                    }
+                    function toggleViewerAutoplay(event) {
+                        if (event) event.stopPropagation();
+                        setViewerAutoplayState(!viewerAutoplay);
+                    }
+                    function toggleViewerRandom(event) {
+                        if (event) event.stopPropagation();
+                        setViewerRandomState(!viewerRandom);
+                    }
+                    if (galleryGrid) {
+                        galleryGrid.addEventListener('click', function(event) {
+                            const deleteButton = event.target.closest('.gallery-delete');
+                            if (deleteButton) {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                window.opener.postMessage({
+                                    type: 'DELETE_IMAGE',
+                                    index: Number(deleteButton.dataset.deleteIndex),
+                                    mediaType: deleteButton.dataset.deleteMediaType,
+                                    id: '${editingId}'
+                                }, '*');
+                                return;
+                            }
+
+                            const card = event.target.closest('.gallery-card');
+                            if (!card) return;
+                            event.preventDefault();
+                            openFullscreenViewer(card.dataset.galleryIndex);
+                        });
+                    }
+                    viewer.addEventListener('click', function(event) {
+                        if (event.target === viewer) {
+                            closeFullscreenViewer();
+                        }
+                    });
+                    window.addEventListener('keydown', function(event) {
+                        if (!viewer.classList.contains('open')) return;
+
+                        if (event.key === 'Escape') {
+                            event.preventDefault();
+                            closeFullscreenViewer();
+                            return;
+                        }
+
+                        if (event.key === 'ArrowRight') {
+                            event.preventDefault();
+                            showNextViewerPhoto();
+                        }
+
+                        if (event.key === 'ArrowLeft') {
+                            event.preventDefault();
+                            showPreviousViewerPhoto();
+                        }
+                    });
+                    setViewerAutoplayState(false);
+                    setViewerRandomState(false);
+                    renderViewerSlide(0);
+                <\/script>
+            </body>
+            </html>
+        `);
+            targetWindow.document.close();
+        };
+
+        const App = () => {
+            const [carpetaAbierta, setCarpetaAbierta] = React.useState(null);
+            const galleryWindowRef = useRef(null);
+            const [perfiles, setPerfiles] = useState([]);
+                const neonColors = {
+        "CANTANTE": { color: "#0ea5e9", sombra: "rgba(14,165,233,0.8)" },    // Celeste
+        "NSFW":  { color: "#ef4444", sombra: "rgba(239,68,68,0.8)" },      // Rojo
+        "ACTRIZ":{ color: "#22c55e", sombra: "rgba(34,197,94,0.8)" },        // Verde
+        "MODELO": { color: "#f97316", sombra: "rgba(249,115,22,0.8)" },      // Naranja
+        "BAILARINA": { color: "#a855f7", sombra: "rgba(168,85,247,0.8)" },    // Morado
+        "INFLUENCER":{ color: "#ec4899", sombra: "rgba(236,72,153,0.8)" },      // Rosada
+        "PERIODISTA": { color: "#facc15", sombra: "rgba(250,204,21,0.8)" },  // Amarillo
+        "ATLETA":  { color: "#78350f", sombra: "rgba(120,53,15,0.8)" },         // Marron
+        "OTRO":{ color: "#ffffff", sombra: "rgba(255,255,255,0.8)" }, // Blanco
+        "DEFAULT": { color: "#334155", sombra: "transparent" }
+                };
+            const [minEdad, setMinEdad] = useState(18);
+            const [maxEdad, setMaxEdad] = useState(60);
+
+            const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
+            const [activeTab, setActiveTab] = useState('EXPLORAR');
+            const [selectedArena, setSelectedArena] = useState(null);
+            const [arenaBattleState, setArenaBattleState] = useState({});
+            const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
+            const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
+            const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
+            const [searchQuery, setSearchQuery] = useState('');
+            const [isModalOpen, setIsModalOpen] = useState(false);
+            const [isCatModalOpen, setIsCatModalOpen] = useState(false);
+            const [editingId, setEditingId] = useState(null);
+            const [selectedCategory, setSelectedCategory] = React.useState(null);
+            const [sortBy, setSortBy] = useState('promedio');
+            const [sortDirection, setSortDirection] = useState('desc');
+            const [urlInput, setUrlInput] = useState('');
+            const [galleryLabel, setGalleryLabel] = useState(GALLERY_LABELS[0]);
+            const [galleryMediaType, setGalleryMediaType] = useState('image');
+            const [galleryFilterLabel, setGalleryFilterLabel] = useState('INICIAL');
+            const [galleryViewMode, setGalleryViewMode] = useState('GENERAL');
+            const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(null);
+            const [selectedGalleryBucket, setSelectedGalleryBucket] = useState(null);
+            const [selectedCharacterBucketIds, setSelectedCharacterBucketIds] = useState([]);
+            const [selectedTagLabels, setSelectedTagLabels] = useState([]);
+            const [isGalleryPlaying, setIsGalleryPlaying] = useState(false);
+            const [isGalleryRandom, setIsGalleryRandom] = useState(false);
+            const [galleryPlaybackSeconds, setGalleryPlaybackSeconds] = useState(5);
+            const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+            const [isEditingGalleryLabel, setIsEditingGalleryLabel] = useState(false);
+            const [galleryLabelDraft, setGalleryLabelDraft] = useState('');
+            const galleryPlaybackTimeoutRef = useRef(null);
+
+            const [filters, setFilters] = useState({
+                nacionalidad: 'Todas',
+                profesion: 'Todas',
+                edad: 'Todas',
+                ciudad: 'Todas',
+                scoreAttr: 'Cualquiera',
+                scoreOp: 'Superior a',
+                scoreVal: ''
+            });
+
+const getInitialCatFormData = () => ({
+    label: '',
+    emoji: '📁',
+    coverImg: '',
+    reglas: {
+        nacionalidades: [],
+        profesiones: [],
+        ciudades: [],
+        edadMin: '',
+        edadMax: '',
+        caracteristica: 'Rostro',
+        operador: 'Superior a',
+        umbral: ''
+    }
+});
+        const [formData, setFormData] = useState({
+                nombre: '', nacionalidad: '', ciudad: '', profesion: '', fechaNacimiento: '', estaturaCm: '', fotos: [],
+                galeria: { fotos: [], gifs: [], videos: [] },
+                batallaFotosPreferidas: getDefaultBattlePhotoPreferences(),
+                puntuaciones: createZeroScores()
+            });
+            const mapProfileToFormData = (profile = {}) => ({
+                ...profile,
+                galeria: {
+                    fotos: Array.isArray(profile?.galeria?.fotos) ? profile.galeria.fotos : [],
+                    gifs: Array.isArray(profile?.galeria?.gifs) ? profile.galeria.gifs : [],
+                    videos: Array.isArray(profile?.galeria?.videos) ? profile.galeria.videos : []
+                },
+                batallaFotosPreferidas: sanitizeBattlePhotoPreferences(profile?.batallaFotosPreferidas),
+                puntuaciones: profile?.puntuaciones ? { ...createZeroScores(), ...profile.puntuaciones } : createZeroScores()
+            });
+            const addGalleryImage = async ({ profileId, url, tag = 'fotos', label = '', type = 'image' }) => {
+                const normalizedUrl = (url || '').trim();
+                const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
+                const normalizedType = detectGalleryItemType(normalizedUrl, type);
+                if (!profileId || !normalizedUrl) return [];
+
+                const galleryRef = db.ref(`perfiles/${profileId}/galeria/${tag}`);
+                const snapshot = await galleryRef.once('value');
+                const currentItems = snapshot.val() || [];
+                const updatedItems = [...currentItems, { url: normalizedUrl, label: normalizedLabel, type: normalizedType }];
+
+                await galleryRef.set(updatedItems);
+
+                if (profileId === editingId) {
+                    setFormData(prev => ({
+                        ...prev,
+                        galeria: {
+                            ...(prev.galeria || { fotos: [], gifs: [], videos: [] }),
+                            [tag]: updatedItems
+                        }
+                    }));
+                }
+
+                return updatedItems;
+            };
+
+            const submitGalleryImage = async ({ profileId = editingId, url = urlInput, label = galleryLabel, type = galleryMediaType, successMessage } = {}) => {
+                if (!profileId || !(url || '').trim()) return;
+
+                try {
+                    await addGalleryImage({ profileId, url, tag: type === 'video' ? 'videos' : 'fotos', label, type });
+                    setUrlInput('');
+                    setGalleryLabel(GALLERY_LABELS[0]);
+                    setGalleryMediaType('image');
+
+
+                    if (successMessage) {
+                        alert(successMessage);
+                    }
+                } catch (error) {
+                    console.error('Error al guardar archivo en galería:', error);
+                }
+            };
+            const updateGalleryItemLabel = async ({ profileId, sourceTag, sourceIndex, label }) => {
+                if (!profileId || !sourceTag || !Number.isInteger(sourceIndex)) return;
+                const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
+                const galleryRef = db.ref(`perfiles/${profileId}/galeria/${sourceTag}`);
+                const snapshot = await galleryRef.once('value');
+                const currentItems = Array.isArray(snapshot.val()) ? snapshot.val() : [];
+                if (!currentItems[sourceIndex]) return;
+
+                const updatedItems = [...currentItems];
+                const normalizedItem = normalizeGalleryItem(updatedItems[sourceIndex], sourceTag === 'videos' ? 'video' : 'image');
+                updatedItems[sourceIndex] = {
+                    ...normalizedItem,
+                    label: normalizedLabel
+                };
+
+                await galleryRef.set(updatedItems);
+
+                if (profileId === editingId) {
+                    setFormData(prev => ({
+                        ...prev,
+                        galeria: {
+                            ...(prev.galeria || { fotos: [], gifs: [], videos: [] }),
+                            [sourceTag]: updatedItems
+                        }
+                    }));
+                }
+            };
+            const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(String(reader.result || ''));
+                reader.onerror = () => reject(new Error('No se pudo leer el archivo.'));
+                reader.readAsDataURL(file);
+            });
+            const handleLocalProfilePhotoUpload = async (event) => {
+                const selectedFile = event.target.files?.[0];
+                if (!selectedFile) return;
+                try {
+                    const dataUrl = await readFileAsDataUrl(selectedFile);
+                    setFormData(prev => ({ ...prev, fotos: [dataUrl] }));
+                } catch (error) {
+                    console.error('Error al cargar foto de perfil local:', error);
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            const handleLocalGalleryFileUpload = async (event) => {
+                const selectedFile = event.target.files?.[0];
+                if (!selectedFile) return;
+                try {
+                    const dataUrl = await readFileAsDataUrl(selectedFile);
+                    const inferredType = selectedFile.type && selectedFile.type.startsWith('video/') ? 'video' : 'image';
+                    setUrlInput(dataUrl);
+                    setGalleryMediaType(inferredType);
+                } catch (error) {
+                    console.error('Error al cargar archivo local de galería:', error);
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            const handleDelete = async (id, e) => {
+                e.stopPropagation(); // Esto es para que no se abra la foto cuando hacés click en la cruz
+                if(confirm('¿Estás seguro de que querés eliminar esto, corazón?')) {
+                    try {
+                        await db.collection('galeria').doc(id).delete();
+                    } catch (error) {
+                        console.error("Error al borrar de Firebase:", error);
+                    }
+                }
+            };
+
+            const [catFormData, setCatFormData] = useState(getInitialCatFormData());
+            const resetCatForm = () => setCatFormData(getInitialCatFormData());
+
+            useEffect(() => {
+                if (window.lucide) {
+                    window.lucide.createIcons();
+                }
+            }, [activeTab, isModalOpen, isCatModalOpen, perfiles, searchQuery, selectedCategory, filters, categorias]);
+
+            useEffect(() => {
+                if (galleryWindowRef.current && !galleryWindowRef.current.closed && editingId) {
+                    renderGalleryWindow({
+                        targetWindow: galleryWindowRef.current,
+                        profileName: formData.nombre,
+                        profession: formData.profesion,
+                        photos: [
+                            ...(formData.galeria?.fotos || []).map((item, index) => ({ ...normalizeGalleryItem(item, 'image'), sourceTag: 'fotos', sourceIndex: index })),
+                            ...(formData.galeria?.videos || []).map((item, index) => ({ ...normalizeGalleryItem(item, 'video'), sourceTag: 'videos', sourceIndex: index }))
+                        ],
+                        editingId,
+                        battlePhotoPrefs: formData.batallaFotosPreferidas
+                    });
+                }
+            }, [editingId, formData.nombre, formData.profesion, formData.galeria?.fotos, formData.galeria?.videos, formData.batallaFotosPreferidas]);
+
+            useEffect(() => {
+                const handleMessage = async (event) => {
+                    if (event.data.type === 'ADD_IMAGE') {
+                        const { url, id, label, mediaType } = event.data;
+                        const tag = mediaType === 'video' ? 'videos' : 'fotos';
+                        const galleryRef = db.ref(`perfiles/${id}/galeria/${tag}`);
+                        const snapshot = await galleryRef.once('value');
+                        const currentPhotos = snapshot.val() || [];
+                        const normalizedUrl = (url || '').trim();
+                        if (!normalizedUrl) return;
+                        const updatedPhotos = [...currentPhotos, { url: normalizedUrl, label: GALLERY_LABELS.includes(label) ? label : '', type: detectGalleryItemType(normalizedUrl, mediaType) }];
+
+                        await galleryRef.set(updatedPhotos);
+                        setFormData(prev => ({
+                            ...prev,
+                            galeria: { ...prev.galeria, [tag]: updatedPhotos }
+                        }));
+                    }
+
+                    if (event.data.type === 'DELETE_IMAGE') {
+                        const { index, id, mediaType } = event.data;
+                        const tag = mediaType === 'video' ? 'videos' : 'fotos';
+                        const galleryRef = db.ref(`perfiles/${id}/galeria/${tag}`);
+                        const snapshot = await galleryRef.once('value');
+                        const currentPhotos = snapshot.val() || [];
+                        const removedPhoto = currentPhotos[index];
+                        const nuevasFotos = currentPhotos.filter((_, i) => i !== index);
+
+                        await galleryRef.set(nuevasFotos);
+                        const removedUrl = normalizeGalleryItem(removedPhoto, mediaType).url;
+                        if (removedUrl) {
+                            const prefsRef = db.ref(`perfiles/${id}/batallaFotosPreferidas`);
+                            const prefsSnapshot = await prefsRef.once('value');
+                            const currentPrefs = sanitizeBattlePhotoPreferences(prefsSnapshot.val());
+                            const updatedPrefs = { ...currentPrefs };
+                            let hasChanges = false;
+                            Object.keys(updatedPrefs).forEach((slotId) => {
+                                if (updatedPrefs[slotId] === removedUrl) {
+                                    updatedPrefs[slotId] = '';
+                                    hasChanges = true;
+                                }
+                            });
+                            if (hasChanges) {
+                                await prefsRef.set(updatedPrefs);
+                            }
+                        }
+                        setFormData(prev => ({
+                            ...prev,
+                            galeria: { ...prev.galeria, [tag]: nuevasFotos },
+                            batallaFotosPreferidas: (() => {
+                                const currentPrefs = sanitizeBattlePhotoPreferences(prev.batallaFotosPreferidas);
+                                if (!removedUrl) return currentPrefs;
+                                const updatedPrefs = { ...currentPrefs };
+                                Object.keys(updatedPrefs).forEach((slotId) => {
+                                    if (updatedPrefs[slotId] === removedUrl) {
+                                        updatedPrefs[slotId] = '';
+                                    }
+                                });
+                                return updatedPrefs;
+                            })()
+                        }));
+                    }
+
+                    if (event.data.type === 'SET_BATTLE_PHOTO_PREF') {
+                        const { id, slotId, index, mediaType } = event.data;
+                        const slotConfig = getBattleSlotById(slotId);
+                        if (!id || !slotConfig || !Number.isInteger(index)) return;
+                        const tag = mediaType === 'video' ? 'videos' : 'fotos';
+                        const galleryRef = db.ref(`perfiles/${id}/galeria/${tag}`);
+                        const snapshot = await galleryRef.once('value');
+                        const currentItems = snapshot.val() || [];
+                        const selectedItem = normalizeGalleryItem(currentItems[index], mediaType);
+                        if (!selectedItem.url || selectedItem.type !== 'image') return;
+                        if (!slotConfig.labels.includes(selectedItem.label)) return;
+
+                        const prefsRef = db.ref(`perfiles/${id}/batallaFotosPreferidas/${slotId}`);
+                        await prefsRef.set(selectedItem.url);
+                        setFormData(prev => ({
+                            ...prev,
+                            batallaFotosPreferidas: {
+                                ...sanitizeBattlePhotoPreferences(prev.batallaFotosPreferidas),
+                                [slotId]: selectedItem.url
+                            }
+                        }));
+                    }
+
+                    if (event.data.type === 'CLEAR_BATTLE_PHOTO_PREF') {
+                        const { id, slotId } = event.data;
+                        const slotConfig = getBattleSlotById(slotId);
+                        if (!id || !slotConfig) return;
+                        const prefsRef = db.ref(`perfiles/${id}/batallaFotosPreferidas/${slotId}`);
+                        await prefsRef.set('');
+                        setFormData(prev => ({
+                            ...prev,
+                            batallaFotosPreferidas: {
+                                ...sanitizeBattlePhotoPreferences(prev.batallaFotosPreferidas),
+                                [slotId]: ''
+                            }
+                        }));
+                    }
+                };
+
+                window.addEventListener('message', handleMessage);
+                const perfilesRef = db.ref('perfiles');
+                perfilesRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const listaPerfiles = Object.keys(data).map(key => ({
+                            ...mapProfileToFormData(data[key]),
+                            firebaseId: key // Guardamos la llave de Firebase por si necesitamos editar
+                        }));
+                        setPerfiles(listaPerfiles);
+                    } else {
+                        setPerfiles([]);
+                    }
+                });
+
+                // Escuchar Categorías en tiempo real desde Firebase
+                const categoriasRef = db.ref('categorias');
+                categoriasRef.on('value', (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        const listaCats = Object.keys(data).map(key => ({
+                            ...data[key],
+                            firebaseId: key
+                        }));
+                        setCategorias(listaCats);
+                    } else {
+                        setCategorias(INITIAL_CATEGORIES);
+                    }
+                });
+
+                const arenasRef = db.ref('arenaBattleState');
+                arenasRef.on('value', (snapshot) => {
+                    setArenaBattleState(snapshot.val() || {});
+                });
+
+                return () => {
+                    window.removeEventListener('message', handleMessage);
+                    perfilesRef.off();
+                    categoriasRef.off();
+                    arenasRef.off();
+                };
+            }, []);
+
+            const calcularEdad = (fecha) => {
+                if (!fecha) return '?';
+                const hoy = new Date();
+                const cumple = new Date(fecha);
+                let edad = hoy.getFullYear() - cumple.getFullYear();
+                if (hoy.getMonth() < cumple.getMonth() || (hoy.getMonth() === cumple.getMonth() && hoy.getDate() < cumple.getDate())) edad--;
+                return edad;
+            };
+
+            const getProfileScores = (profile = {}) => {
+                return { ...createZeroScores(), ...(profile?.puntuaciones || {}) };
+            };
+            const getRostroScore = (profile = {}) => {
+                const scores = getProfileScores(profile);
+                return (scores.Rostro + scores.Ojos + scores.Boca + scores.Cabello) / 4;
+            };
+            const getCuerpoScore = (profile = {}) => {
+                const scores = getProfileScores(profile);
+                return (scores.Cuerpo + scores.Cola + scores.Pechos + scores.Cintura + scores.Piernas + scores.Estatura) / 6;
+            };
+            const getActitudScore = (profile = {}) => {
+                const scores = getProfileScores(profile);
+                return (scores.Sensualidad + scores.Carisma + scores.Elegancia + scores.Dulzura + scores.Talento) / 5;
+            };
+            const calcularPromedio = (p = {}) => {
+                // El Score Total es el promedio de las 3 categorías principales
+                const scoreTotal = (getRostroScore(p) + getCuerpoScore(p) + getActitudScore(p)) / 3;
+                return scoreTotal.toFixed(0);
+            };
+
+            const obtenerCategoriasDePerfil = (p) => {
+                const cats = [];
+                const nac = (p.nacionalidad || '').toLowerCase();
+                const prof = (p.profesion || '').toLowerCase();
+                const ciu = (p.ciudad || '').toLowerCase();
+                const edad = calcularEdad(p.fechaNacimiento);
+
+                categorias.forEach(c => {
+                    const r = c.reglas;
+                    let matches = true;
+
+                    // Filtros de texto (nacionalidad, profesión, ciudad)
+                    if (r.nacionalidades?.length > 0 && !r.nacionalidades.some(n => nac === n.toLowerCase())) matches = false;
+                    if (r.profesiones?.length > 0 && !r.profesiones.some(p => prof === p.toLowerCase())) matches = false;
+                    if (r.ciudades?.length > 0 && !r.ciudades.some(ciu_regla => ciu === ciu_regla.toLowerCase())) matches = false;
+
+                    // Filtros de edad
+                    if (r.edadMin && (edad === '?' || edad < parseInt(r.edadMin))) matches = false;
+                    if (r.edadMax && (edad === '?' || edad > parseInt(r.edadMax))) matches = false;
+
+                    // Filtro de puntuación (ej: Rostro > 8)
+                    if (r.caracteristica && r.umbral) {
+                        const score = getProfileScores(p)[r.caracteristica] || 0;
+                        const umbral = parseInt(r.umbral);
+                        if (r.operador === 'Superior a' && score <= umbral) matches = false;
+                        if (r.operador === 'Inferior a' && score >= umbral) matches = false;
+                    }
+
+                    // USAMOS firebaseId PORQUE ES EL QUE VIENE DE LA BASE DE DATOS
+                    if (matches) cats.push(c.firebaseId);
+                });
+                return cats;
+            };
+
+            const uniqueNacionalidades = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.nacionalidad).filter(Boolean))], [perfiles]);
+            const uniqueProfesiones = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.profesion).filter(Boolean))], [perfiles]);
+            const uniqueCiudades = useMemo(() => ['Todas', ...new Set(perfiles.map(p => p.ciudad).filter(Boolean))], [perfiles]);
+            const profileCategoryMap = useMemo(() => {
+                return (perfiles || []).reduce((acc, profile) => {
+                    if (!profile?.firebaseId) return acc;
+                    acc[profile.firebaseId] = obtenerCategoriasDePerfil(profile);
+                    return acc;
+                }, {});
+            }, [perfiles, categorias]);
+            const allGalleryPhotos = useMemo(() => {
+                return (perfiles || []).flatMap((perfil) => {
+                    const galleryItems = [
+                        ...(Array.isArray(perfil?.galeria?.fotos)
+                            ? perfil.galeria.fotos.map((item, sourceIndex) => ({
+                                ...normalizeGalleryItem(item, 'image'),
+                                sourceTag: 'fotos',
+                                sourceIndex
+                            }))
+                            : []),
+                        ...(Array.isArray(perfil?.galeria?.gifs)
+                            ? perfil.galeria.gifs.map((item, sourceIndex) => ({
+                                ...normalizeGalleryItem(item, 'image'),
+                                sourceTag: 'gifs',
+                                sourceIndex
+                            }))
+                            : []),
+                        ...(Array.isArray(perfil?.galeria?.videos)
+                            ? perfil.galeria.videos.map((item, sourceIndex) => ({
+                                ...normalizeGalleryItem(item, 'video'),
+                                sourceTag: 'videos',
+                                sourceIndex
+                            }))
+                            : [])
+                    ];
+
+                    return galleryItems
+                        .map((item, index) => {
+                            const normalizedItem = normalizeGalleryItem(item);
+                            if (!normalizedItem.url) return null;
+
+                            return {
+                                id: `${perfil.firebaseId || perfil.nombre || 'perfil'}-${index}-${normalizedItem.url}`,
+                                url: normalizedItem.url,
+                                label: normalizedItem.label,
+                                type: normalizedItem.type,
+                                isGif: normalizedItem.type === 'image' && isGifUrl(normalizedItem.url),
+                                nombre: perfil.nombre || 'Sin nombre',
+                                profesion: perfil.profesion || 'Perfil',
+                                nacionalidad: perfil.nacionalidad || '',
+                                fotoPerfil: perfil.fotos?.[0] || normalizedItem.url,
+                                profileId: perfil.firebaseId,
+                                sourceTag: item.sourceTag || (normalizedItem.type === 'video' ? 'videos' : 'fotos'),
+                                sourceIndex: Number.isInteger(item.sourceIndex) ? item.sourceIndex : index
+                            };
+                        })
+                        .filter(Boolean);
+                });
+            }, [perfiles]);
+            const galleryBuckets = useMemo(() => {
+                if (galleryViewMode === 'GENERAL') {
+                    return [{
+                        id: 'GENERAL',
+                        nombre: 'General',
+                        profesion: 'Archivo global',
+                        nacionalidad: '',
+                        fotoPerfil: allGalleryPhotos[0]?.url || '',
+                        photos: allGalleryPhotos
+                    }];
+                }
+
+                if (galleryViewMode === 'PERSONAJE') {
+                    const groupedByProfile = allGalleryPhotos.reduce((acc, photo) => {
+                        const key = photo.profileId || photo.nombre;
+                        if (!key) return acc;
+                        if (!acc[key]) {
+                            acc[key] = {
+                                id: `PERSONAJE-${key}`,
+                                profileId: photo.profileId || null,
+                                nombre: photo.nombre || 'Sin nombre',
+                                profesion: photo.profesion || 'Perfil',
+                                nacionalidad: photo.nacionalidad || '',
+                                fotoPerfil: photo.fotoPerfil || photo.url,
+                                photos: []
+                            };
+                        }
+                        acc[key].photos.push(photo);
+                        return acc;
+                    }, {});
+
+                    return Object.values(groupedByProfile)
+                        .filter(bucket => bucket.photos.length > 0)
+                        .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+                }
+
+                if (galleryViewMode === 'ETIQUETA') {
+                    return GALLERY_LABELS
+                        .map((label) => {
+                            const labelPhotos = allGalleryPhotos.filter(photo => photo.label === label);
+                            return {
+                                id: `ETIQUETA-${label}`,
+                                nombre: `Etiqueta ${label}`,
+                                profesion: 'Archivo por etiqueta',
+                                nacionalidad: '',
+                                fotoPerfil: labelPhotos[0]?.url || '',
+                                photos: labelPhotos
+                            };
+                        })
+                        .filter(bucket => bucket.photos.length > 0);
+                }
+
+                return (categorias || [])
+                    .map((categoria) => {
+                        const categoryPhotos = allGalleryPhotos.filter((photo) => {
+                            if (!photo.profileId) return false;
+                            return (profileCategoryMap[photo.profileId] || []).includes(categoria.firebaseId);
+                        });
+
+                        return {
+                            id: `CARPETA-${categoria.firebaseId}`,
+                            nombre: categoria.label || 'Carpeta sin nombre',
+                            profesion: 'Categoría',
+                            nacionalidad: '',
+                            fotoPerfil: categoria.coverImg || categoryPhotos[0]?.fotoPerfil || categoryPhotos[0]?.url || '',
+                            photos: categoryPhotos
+                        };
+                    })
+                    .filter(bucket => bucket.photos.length > 0)
+                    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+            }, [allGalleryPhotos, categorias, galleryViewMode, profileCategoryMap]);
+            const activeGalleryBucket = useMemo(() => {
+                if (galleryViewMode === 'GENERAL') return galleryBuckets[0] || null;
+                if (!selectedGalleryBucket) return null;
+                return galleryBuckets.find(bucket => bucket.id === selectedGalleryBucket.id) || null;
+            }, [galleryBuckets, selectedGalleryBucket, galleryViewMode]);
+            const selectedCharacterBuckets = useMemo(() => {
+                if (galleryViewMode !== 'PERSONAJE') return [];
+                return galleryBuckets.filter((bucket) => selectedCharacterBucketIds.includes(bucket.id));
+            }, [galleryBuckets, galleryViewMode, selectedCharacterBucketIds]);
+            const sourceGalleryPhotos = useMemo(() => {
+                if (galleryViewMode === 'PERSONAJE') {
+                    return selectedCharacterBuckets.flatMap((bucket) => bucket.photos || []);
+                }
+                if (galleryViewMode === 'ETIQUETA') {
+                    if (!selectedTagLabels.length) return [];
+                    return allGalleryPhotos.filter((photo) => selectedTagLabels.includes(photo.label));
+                }
+                return activeGalleryBucket?.photos || allGalleryPhotos;
+            }, [galleryViewMode, selectedCharacterBuckets, activeGalleryBucket, allGalleryPhotos, selectedTagLabels]);
+            const galleryStats = useMemo(() => {
+                return GALLERY_LABELS.reduce((acc, label) => {
+                    acc[label] = sourceGalleryPhotos.filter(photo => photo.label === label).length;
+                    return acc;
+                }, {});
+            }, [sourceGalleryPhotos]);
+            const filteredGalleryPhotos = useMemo(() => {
+                const query = searchQuery.trim().toLowerCase();
+
+                return sourceGalleryPhotos.filter(photo => {
+                    const matchesLabel = galleryViewMode === 'ETIQUETA'
+                        ? true
+                        : galleryFilterLabel === 'INICIAL'
+                            ? photo.label !== 'X'
+                            : galleryFilterLabel === '100'
+                                ? true
+                                : photo.label === galleryFilterLabel;
+                    const matchesQuery = !query
+                        || String(photo.nombre || '').toLowerCase().includes(query)
+                        || String(photo.profesion || '').toLowerCase().includes(query)
+                        || String(photo.nacionalidad || '').toLowerCase().includes(query)
+                        || String(photo.label || '').toLowerCase().includes(query);
+
+                    return matchesLabel && matchesQuery;
+                });
+            }, [sourceGalleryPhotos, galleryFilterLabel, searchQuery, galleryViewMode]);
+            const currentGalleryModeLabel = GALLERY_VIEW_MODE_LABELS[galleryViewMode] || galleryViewMode;
+            const isGalleryBucketMode = galleryViewMode !== 'GENERAL' && galleryViewMode !== 'ETIQUETA';
+            const availableCharacterBuckets = useMemo(() => {
+                if (galleryViewMode !== 'PERSONAJE') return [];
+                return galleryBuckets.filter((bucket) => !selectedCharacterBucketIds.includes(bucket.id));
+            }, [galleryBuckets, galleryViewMode, selectedCharacterBucketIds]);
+            const selectedGalleryPhoto = selectedGalleryIndex === null
+                ? null
+                : filteredGalleryPhotos[clampIndex(selectedGalleryIndex, filteredGalleryPhotos.length)] || null;
+
+            useEffect(() => {
+                if (!selectedGalleryPhoto) {
+                    setIsEditingGalleryLabel(false);
+                    setGalleryLabelDraft('');
+                    return;
+                }
+                setIsEditingGalleryLabel(false);
+                setGalleryLabelDraft(selectedGalleryPhoto.label || '');
+            }, [selectedGalleryPhoto]);
+
+            useEffect(() => {
+                if (activeTab !== 'GALERIA') {
+                    setSelectedGalleryBucket(null);
+                    setSelectedGalleryIndex(null);
+                }
+            }, [activeTab]);
+
+            useEffect(() => {
+                setSelectedGalleryBucket(null);
+                setSelectedGalleryIndex(null);
+                setSelectedCharacterBucketIds([]);
+                setSelectedTagLabels([]);
+            }, [galleryViewMode]);
+
+            useEffect(() => {
+                if (selectedGalleryIndex === null) return;
+
+                if (!filteredGalleryPhotos.length) {
+                    setSelectedGalleryIndex(null);
+                    return;
+                }
+
+                if (selectedGalleryIndex >= filteredGalleryPhotos.length) {
+                    setSelectedGalleryIndex(0);
+                }
+            }, [filteredGalleryPhotos, selectedGalleryIndex]);
+
+            useEffect(() => {
+                if (selectedGalleryIndex === null) return;
+
+                const handleGalleryKeydown = (event) => {
+                    if (event.key === 'Escape') {
+                        setSelectedGalleryIndex(null);
+                        return;
+                    }
+
+                    if (!filteredGalleryPhotos.length) return;
+
+                    if (event.key === 'ArrowRight') {
+                        setSelectedGalleryIndex((current) => clampIndex((current ?? 0) + 1, filteredGalleryPhotos.length));
+                    }
+
+                    if (event.key === 'ArrowLeft') {
+                        setSelectedGalleryIndex((current) => clampIndex((current ?? 0) - 1, filteredGalleryPhotos.length));
+                    }
+                };
+
+                window.addEventListener('keydown', handleGalleryKeydown);
+                return () => window.removeEventListener('keydown', handleGalleryKeydown);
+            }, [filteredGalleryPhotos.length, selectedGalleryIndex]);
+
+            useEffect(() => {
+                if (selectedGalleryIndex === null) {
+                    setIsGalleryPlaying(false);
+                    setIsGalleryRandom(false);
+                }
+            }, [selectedGalleryIndex]);
+
+            useEffect(() => {
+                if (galleryPlaybackTimeoutRef.current) {
+                    clearTimeout(galleryPlaybackTimeoutRef.current);
+                    galleryPlaybackTimeoutRef.current = null;
+                }
+
+                if (!isGalleryPlaying || !selectedGalleryPhoto) return;
+
+                const timeoutDuration = galleryPlaybackSeconds * 1000;
+                galleryPlaybackTimeoutRef.current = setTimeout(() => {
+                    setSelectedGalleryIndex((current) => getNextPlayableIndex(current, filteredGalleryPhotos, isGalleryRandom));
+                }, timeoutDuration);
+
+                return () => {
+                    if (galleryPlaybackTimeoutRef.current) {
+                        clearTimeout(galleryPlaybackTimeoutRef.current);
+                        galleryPlaybackTimeoutRef.current = null;
+                    }
+                };
+            }, [isGalleryPlaying, selectedGalleryPhoto, filteredGalleryPhotos, isGalleryRandom, galleryPlaybackSeconds]);
+
+            const openGalleryViewer = (index, autoplay = false) => {
+                setSelectedGalleryIndex(index);
+                setIsGalleryPlaying(autoplay);
+            };
+            const addCharacterToGallerySelection = (bucketId) => {
+                if (!bucketId) return;
+                setSelectedCharacterBucketIds((current) => current.includes(bucketId) ? current : [...current, bucketId]);
+                setSelectedGalleryIndex(null);
+            };
+            const removeCharacterFromGallerySelection = (bucketId) => {
+                if (!bucketId) return;
+                setSelectedCharacterBucketIds((current) => current.filter((id) => id !== bucketId));
+                setSelectedGalleryIndex(null);
+            };
+            const toggleEtiquetaSelection = (label) => {
+                if (!label) return;
+                setSelectedTagLabels((current) => current.includes(label)
+                    ? current.filter((selected) => selected !== label)
+                    : [...current, label]
+                );
+                setSelectedGalleryIndex(null);
+            };
+            const closeGalleryViewer = () => {
+                setIsGalleryPlaying(false);
+                setSelectedGalleryIndex(null);
+            };
+            const showNextGalleryPhoto = () => setSelectedGalleryIndex((current) => getNextPlayableIndex(current, filteredGalleryPhotos, isGalleryRandom));
+            const showPreviousGalleryPhoto = () => setSelectedGalleryIndex((current) => clampIndex((current ?? 0) - 1, filteredGalleryPhotos.length));
+            const saveSelectedGalleryLabel = async () => {
+                if (!selectedGalleryPhoto?.profileId || !selectedGalleryPhoto?.sourceTag || !Number.isInteger(selectedGalleryPhoto?.sourceIndex)) return;
+                try {
+                    await updateGalleryItemLabel({
+                        profileId: selectedGalleryPhoto.profileId,
+                        sourceTag: selectedGalleryPhoto.sourceTag,
+                        sourceIndex: selectedGalleryPhoto.sourceIndex,
+                        label: galleryLabelDraft
+                    });
+                    setIsEditingGalleryLabel(false);
+                } catch (error) {
+                    console.error('Error al actualizar etiqueta de la multimedia:', error);
+                }
+            };
+            const galleryContextLabel = useMemo(() => {
+                if (galleryViewMode === 'PERSONAJE') {
+                    return selectedCharacterBuckets.length
+                        ? `${selectedCharacterBuckets.length} personaje${selectedCharacterBuckets.length > 1 ? 's' : ''} seleccionado${selectedCharacterBuckets.length > 1 ? 's' : ''}`
+                        : 'Sin personajes seleccionados';
+                }
+                if (activeGalleryBucket && isGalleryBucketMode) return activeGalleryBucket.nombre;
+                return currentGalleryModeLabel;
+            }, [galleryViewMode, selectedCharacterBuckets, activeGalleryBucket, isGalleryBucketMode, currentGalleryModeLabel]);
+
+const saveProfile = (e) => {
+                e.preventDefault();
+                const profileData = { ...formData };
+
+                if (editingId) {
+                    // Si estamos editando, buscamos el lugar exacto y lo actualizamos
+                    db.ref(`perfiles/${editingId}`).set(profileData)
+                        .then(() => {
+                            setIsModalOpen(false);
+                            setEditingId(null);
+                        })
+                        .catch(err => console.error("Error al excitar la base de datos:", err));
+                } else {
+                    // Si es nuevo, lo empujamos con fuerza a la colección
+                    db.ref('perfiles').push(profileData)
+                        .then(() => {
+                            setIsModalOpen(false);
+                            setFormData({
+                                nombre: '', nacionalidad: '', ciudad: '', profesion: '', fechaNacimiento: '', estaturaCm: '', fotos: [],
+                                galeria: { fotos: [], gifs: [], videos: [] }, batallaFotosPreferidas: getDefaultBattlePhotoPreferences(), puntuaciones: createZeroScores()
+                            });
+                        })
+                        .catch(err => console.error("No pudo entrar el perfil:", err));
+                }
+            };
+            const saveCategory = async (e) => {
+                e.preventDefault();
+
+                const { firebaseId, ...categoryData } = catFormData;
+                const payload = { ...categoryData, type: 'custom' };
+
+                try {
+                    if (firebaseId) {
+                        await db.ref(`categorias/${firebaseId}`).update(payload);
+                    } else {
+                        await db.ref('categorias').push(payload);
+                    }
+
+                    setIsCatModalOpen(false);
+                    resetCatForm();
+                } catch (error) {
+                    console.error("La categoría no quiso guardarse:", error);
+                }
+            };
+            const deleteCategory = async (categoryId) => {
+                if (!categoryId) return;
+
+                try {
+                    await db.ref(`categorias/${categoryId}`).remove();
+
+                    setCategorias(prev => prev.filter(c => c.firebaseId !== categoryId));
+                    setSelectedCategory(prev => prev === categoryId ? null : prev);
+                } catch (error) {
+                    console.error("No se pudo borrar la categoría:", error);
+                    alert("No se pudo borrar la carpeta. Probá de nuevo.");
+                }
+            };
+
+            const deleteProfile = async () => {
+                if (!editingId) return;
+
+                const confirmed = confirm('¿Borrar perfil? Esta acción también lo elimina de Firebase.');
+                if (!confirmed) return;
+
+                try {
+                    await db.ref(`perfiles/${editingId}`).remove();
+                    setPerfiles(prev => prev.filter(p => p.firebaseId !== editingId));
+                    setIsModalOpen(false);
+                    setEditingId(null);
+                } catch (error) {
+                    console.error("No se pudo borrar el perfil:", error);
+                    alert("No se pudo borrar el perfil. Probá de nuevo.");
+                }
+            };
+            const getArenaStats = (arenaName, profileId) => {
+                const stats = arenaBattleState[arenaName]?.stats?.[profileId] || { wins: 0, battles: 0 };
+                const score = stats.battles ? Math.round((stats.wins / stats.battles) * 100) : 0;
+                return { ...stats, score };
+            };
+
+            const getProfileHeightLabel = (profile) => {
+                const rawHeight = profile?.estaturaCm;
+                if (rawHeight === undefined || rawHeight === null || rawHeight === '') {
+                    return 'Sin dato';
+                }
+
+                const numericHeight = Number(rawHeight);
+                if (Number.isNaN(numericHeight) || numericHeight <= 0) {
+                    return 'Sin dato';
+                }
+
+                return `${Math.round(numericHeight)} cm`;
+            };
+
+            const findNextPendingPair = (ids = [], playedMatchups = {}) => {
+                for (let i = 0; i < ids.length - 1; i++) {
+                    for (let j = i + 1; j < ids.length; j++) {
+                        const key = [ids[i], ids[j]].sort().join('__');
+                        if (!playedMatchups[key]) {
+                            return [ids[i], ids[j]];
+                        }
+                    }
+                }
+                return null;
+            };
+
+            const rebuildArenaStatsFromMatchups = (matchups = {}) => {
+                return Object.keys(matchups || {}).reduce((acc, key) => {
+                    if (!matchups[key]) return acc;
+                    const [profileAId, profileBId] = String(key).split('__');
+                    if (!profileAId || !profileBId) return acc;
+
+                    const prevA = acc[profileAId] || { wins: 0, battles: 0 };
+                    const prevB = acc[profileBId] || { wins: 0, battles: 0 };
+
+                    return {
+                        ...acc,
+                        [profileAId]: { wins: prevA.wins, battles: prevA.battles + 1 },
+                        [profileBId]: { wins: prevB.wins, battles: prevB.battles + 1 }
+                    };
+                }, {});
+            };
+
+            const normalizeArenaState = (arenaState) => {
+                if (!arenaState) return null;
+
+                const profileIds = new Set(
+                    (perfiles || [])
+                        .filter(p => p?.firebaseId && (p?.nombre || '').trim())
+                        .map(p => p.firebaseId)
+                );
+                const orderedIds = (arenaState.orderedIds || []).filter(id => profileIds.has(id));
+                const stats = arenaState.stats || {};
+                const matchups = arenaState.matchups || {};
+                const currentChampionId = arenaState.championId;
+                const currentChallengerId = arenaState.challengerId;
+                const currentPairIsValid = (
+                    !!currentChampionId &&
+                    !!currentChallengerId &&
+                    currentChampionId !== currentChallengerId &&
+                    orderedIds.includes(currentChampionId) &&
+                    orderedIds.includes(currentChallengerId) &&
+                    !matchups[[currentChampionId, currentChallengerId].sort().join('__')]
+                );
+
+                const nextPendingPair = orderedIds.length > 1 ? findNextPendingPair(orderedIds, matchups) : null;
+                const nextPair = currentPairIsValid
+                    ? [currentChampionId, currentChallengerId]
+                    : nextPendingPair;
+                const isFinished = !nextPendingPair;
+
+                return {
+                    ...arenaState,
+                    orderedIds,
+                    stats,
+                    matchups,
+                    championId: nextPair ? nextPair[0] : null,
+                    challengerId: nextPair ? nextPair[1] : null,
+                    isFinished
+                };
+            };
+
+            useEffect(() => {
+                if (!perfiles.length) return;
+
+                const repairedStates = {};
+                const updates = [];
+
+                Object.entries(arenaBattleState || {}).forEach(([arenaName, state]) => {
+                    const normalized = normalizeArenaState(state);
+                    if (!normalized) return;
+
+                    const hasChanged = JSON.stringify(state) !== JSON.stringify(normalized);
+                    if (!hasChanged) return;
+
+                    repairedStates[arenaName] = normalized;
+                    updates.push(
+                        db.ref(`arenaBattleState/${arenaName}`).set(normalized)
+                            .catch(error => console.error('No se pudo normalizar el estado del arena:', error))
+                    );
+                });
+
+                if (!Object.keys(repairedStates).length) return;
+
+                setArenaBattleState(prev => ({
+                    ...prev,
+                    ...repairedStates
+                }));
+
+                Promise.all(updates).catch(() => {});
+            }, [arenaBattleState, perfiles]);
+
+            const initArenaBattle = (arenaName) => {
+                const orderedProfiles = [...perfiles]
+                    .filter(p => p?.firebaseId && (p?.nombre || '').trim())
+                    .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
+
+                if (orderedProfiles.length < 2) return;
+
+                const findNextPendingPair = (orderedIds, matchups) => {
+                    for (let i = 0; i < orderedIds.length - 1; i++) {
+                        for (let j = i + 1; j < orderedIds.length; j++) {
+                            const pairKey = [orderedIds[i], orderedIds[j]].sort().join('__');
+                            if (!matchups[pairKey]) {
+                                return [orderedIds[i], orderedIds[j]];
+                            }
+                        }
+                    }
+                    return null;
+                };
+
+                const orderedIds = orderedProfiles.map(p => p.firebaseId);
+                const matchups = {};
+                const initialPair = findNextPendingPair(orderedIds, matchups);
+                if (!initialPair) return;
+
+                const nextArenaState = {
+                    orderedIds,
+                    stats: {},
+                    matchups,
+                    championId: initialPair[0],
+                    challengerId: initialPair[1],
+                    isFinished: false
+                };
+
+                setArenaBattleState(prev => ({
+                    ...prev,
+                    [arenaName]: nextArenaState
+                }));
+
+                db.ref(`arenaBattleState/${arenaName}`).set(nextArenaState)
+                    .catch(error => console.error('No se pudo guardar el estado del arena:', error));
+            };
+
+            const updateProfileArenaScore = async (profileId, arenaName, value) => {
+                if (!profileId) return;
+                try {
+                    await db.ref(`perfiles/${profileId}/puntuaciones/${arenaName}`).set(value);
+                } catch (error) {
+                    console.error('No se pudo actualizar score del arena:', error);
+                }
+            };
+
+            const registerBattleWinner = (arenaName, winnerId) => {
+                const state = arenaBattleState[arenaName];
+                if (!state || state.isFinished) return;
+
+                const { orderedIds = [], championId, challengerId, matchups = {}, stats = {} } = state;
+                if (winnerId !== championId && winnerId !== challengerId) return;
+                const loserId = winnerId === championId ? challengerId : championId;
+                if (!winnerId || !loserId) return;
+
+                const pairKey = [winnerId, loserId].sort().join('__');
+                const updatedMatchups = { ...matchups, [pairKey]: true };
+
+                const prevWinner = stats[winnerId] || { wins: 0, battles: 0 };
+                const prevLoser = stats[loserId] || { wins: 0, battles: 0 };
+                const updatedStats = {
+                    ...stats,
+                    [winnerId]: { wins: prevWinner.wins + 1, battles: prevWinner.battles + 1 },
+                    [loserId]: { wins: prevLoser.wins, battles: prevLoser.battles + 1 }
+                };
+
+                const winnerScore = Math.round((updatedStats[winnerId].wins / updatedStats[winnerId].battles) * 100);
+                const loserScore = updatedStats[loserId].battles
+                    ? Math.round((updatedStats[loserId].wins / updatedStats[loserId].battles) * 100)
+                    : 0;
+
+                setPerfiles(prev => prev.map(profile => {
+                    if (profile.firebaseId === winnerId) {
+                        return {
+                            ...profile,
+                            puntuaciones: { ...(profile.puntuaciones || {}), [arenaName]: winnerScore }
+                        };
+                    }
+                    if (profile.firebaseId === loserId) {
+                        return {
+                            ...profile,
+                            puntuaciones: { ...(profile.puntuaciones || {}), [arenaName]: loserScore }
+                        };
+                    }
+                    return profile;
+                }));
+
+                updateProfileArenaScore(winnerId, arenaName, winnerScore);
+                updateProfileArenaScore(loserId, arenaName, loserScore);
+
+                const findNextOpponentForWinner = (ids, currentWinnerId, playedMatchups) => {
+                    if (!currentWinnerId) return null;
+
+                    for (const contenderId of ids) {
+                        if (!contenderId || contenderId === currentWinnerId) continue;
+                        const key = [currentWinnerId, contenderId].sort().join('__');
+                        if (!playedMatchups[key]) {
+                            return contenderId;
+                        }
+                    }
+
+                    return null;
+                };
+
+                const findNextPendingPair = (ids, playedMatchups) => {
+                    for (let i = 0; i < ids.length - 1; i++) {
+                        for (let j = i + 1; j < ids.length; j++) {
+                            const key = [ids[i], ids[j]].sort().join('__');
+                            if (!playedMatchups[key]) {
+                                return [ids[i], ids[j]];
+                            }
+                        }
+                    }
+                    return null;
+                };
+
+                const winnerNextOpponentId = findNextOpponentForWinner(orderedIds, winnerId, updatedMatchups);
+                const nextPair = winnerNextOpponentId
+                    ? [winnerId, winnerNextOpponentId]
+                    : findNextPendingPair(orderedIds, updatedMatchups);
+
+                const nextArenaState = {
+                    ...state,
+                    stats: updatedStats,
+                    matchups: updatedMatchups,
+                    championId: nextPair ? nextPair[0] : null,
+                    challengerId: nextPair ? nextPair[1] : null,
+                    isFinished: !nextPair
+                };
+
+                setArenaBattleState(prev => ({
+                    ...prev,
+                    [arenaName]: nextArenaState
+                }));
+
+                db.ref(`arenaBattleState/${arenaName}`).set(nextArenaState)
+                    .catch(error => console.error('No se pudo guardar avance de batallas:', error));
+            };
+
+            const resetAllScores = async () => {
+                const confirmed = window.confirm('Esto va a poner TODAS las calificaciones en 0. ¿Continuar?');
+                if (!confirmed) return;
+
+                try {
+                    await Promise.all((perfiles || []).map(profile => {
+                        if (!profile?.firebaseId) return Promise.resolve();
+                        return db.ref(`perfiles/${profile.firebaseId}/puntuaciones`).set(createZeroScores());
+                    }));
+
+                    setPerfiles(prev => prev.map(profile => ({
+                        ...profile,
+                        puntuaciones: createZeroScores()
+                    })));
+                    setArenaBattleState({});
+                    await db.ref('arenaBattleState').remove();
+                    alert('Calificaciones reiniciadas en 0 para todos los items.');
+                } catch (error) {
+                    console.error('No se pudieron resetear las calificaciones:', error);
+                    alert('No se pudo completar el reseteo.');
+                }
+            };
+
+            const resetArenaScores = async (arenaName) => {
+                if (!arenaName) {
+                    alert('Seleccioná un item para resetear.');
+                    return;
+                }
+
+                const confirmed = window.confirm(`Esto va a poner en 0 el item "${arenaName}" para todos los perfiles. ¿Continuar?`);
+                if (!confirmed) return;
+
+                try {
+                    await Promise.all((perfiles || []).map((profile) => {
+                        if (!profile?.firebaseId) return Promise.resolve();
+                        return db.ref(`perfiles/${profile.firebaseId}/puntuaciones/${arenaName}`).set(0);
+                    }));
+
+                    setPerfiles((prev) => prev.map((profile) => ({
+                        ...profile,
+                        puntuaciones: {
+                            ...(profile.puntuaciones || {}),
+                            [arenaName]: 0
+                        }
+                    })));
+
+                    setArenaBattleState((prev) => {
+                        if (!prev?.[arenaName]) return prev;
+                        const next = { ...prev };
+                        delete next[arenaName];
+                        return next;
+                    });
+
+                    await db.ref(`arenaBattleState/${arenaName}`).remove();
+                    alert(`Se reseteó "${arenaName}" y se limpió su estado de batallas.`);
+                } catch (error) {
+                    console.error('No se pudo resetear el item:', error);
+                    alert('No se pudo resetear ese item.');
+                }
+            };
+
+            const resetSpecificBattle = async (arenaName, profileAId, profileBId) => {
+                const arenaState = arenaBattleState?.[arenaName];
+                if (!arenaState) {
+                    alert('Esa arena no tiene estado cargado.');
+                    return;
+                }
+
+                const currentMatchups = arenaState.matchups || {};
+                const playedKeys = Object.keys(currentMatchups).filter((key) => !!currentMatchups[key]);
+                if (!playedKeys.length) {
+                    alert('No hay cruces jugados para resetear en esta arena.');
+                    return;
+                }
+
+                const pairKey = [profileAId, profileBId].sort().join('__');
+                if (!currentMatchups[pairKey]) {
+                    alert('Ese cruce no existe o no fue jugado todavía.');
+                    return;
+                }
+
+                const confirmed = window.confirm('¿Seguro que querés deshacer esta batalla?');
+                if (!confirmed) return;
+
+                try {
+                    const updatedMatchups = { ...currentMatchups };
+                    delete updatedMatchups[pairKey];
+
+                    const rebuiltStats = rebuildArenaStatsFromMatchups(updatedMatchups);
+                    const candidateState = {
+                        ...arenaState,
+                        matchups: updatedMatchups,
+                        stats: rebuiltStats
+                    };
+                    const normalizedState = normalizeArenaState(candidateState);
+
+                    if (!normalizedState) {
+                        alert('No se pudo recomponer el estado del arena.');
+                        return;
+                    }
+
+                    setArenaBattleState((prev) => ({
+                        ...prev,
+                        [arenaName]: normalizedState
+                    }));
+
+                    await db.ref(`arenaBattleState/${arenaName}`).set(normalizedState);
+
+                    const affectedIds = [profileAId, profileBId].filter(Boolean);
+                    await Promise.all(affectedIds.map(async (profileId) => {
+                        const profileStats = normalizedState.stats?.[profileId] || { wins: 0, battles: 0 };
+                        const nextScore = profileStats.battles
+                            ? Math.round((profileStats.wins / profileStats.battles) * 100)
+                            : 0;
+                        await db.ref(`perfiles/${profileId}/puntuaciones/${arenaName}`).set(nextScore);
+                    }));
+
+                    setPerfiles((prev) => prev.map((profile) => {
+                        if (!affectedIds.includes(profile.firebaseId)) return profile;
+                        const profileStats = normalizedState.stats?.[profile.firebaseId] || { wins: 0, battles: 0 };
+                        const nextScore = profileStats.battles
+                            ? Math.round((profileStats.wins / profileStats.battles) * 100)
+                            : 0;
+                        return {
+                            ...profile,
+                            puntuaciones: {
+                                ...(profile.puntuaciones || {}),
+                                [arenaName]: nextScore
+                            }
+                        };
+                    }));
+
+                    alert('Batalla reseteada correctamente.');
+                } catch (error) {
+                    console.error('No se pudo resetear la batalla:', error);
+                    alert('No se pudo resetear esa batalla.');
+                }
+            };
+
+            const filteredProfiles = useMemo(() => {
+                let base = perfiles.filter(p => String(p?.nombre || '').toLowerCase().includes(searchQuery.toLowerCase()));
+
+                if (activeTab === 'RANKING') {
+                    return base.filter(p => {
+                        const edad = calcularEdad(p.fechaNacimiento);
+                        const matchNac = filters.nacionalidad === 'Todas' || p.nacionalidad === filters.nacionalidad;
+                        const matchProf = filters.profesion === 'Todas' || p.profesion === filters.profesion;
+                        const matchCiudad = filters.ciudad === 'Todas' || p.ciudad === filters.ciudad;
+
+                        const matchEdad = edad >= minEdad && edad <= maxEdad;
+
+
+                        let matchScore = true;
+                        if (filters.scoreAttr !== 'Cualquiera') {
+                            // Si elige Score Total usamos el promedio, si no, el atributo específico
+                            const valPerfil = filters.scoreAttr === 'promedio'
+                                ? parseFloat(calcularPromedio(p))
+                                : getProfileScores(p)[filters.scoreAttr] || 0;
+
+                            if (filters.scoreVal !== '') {
+                                const valFiltro = parseInt(filters.scoreVal);
+                                if (filters.scoreOp === 'Superior a') matchScore = valPerfil >= valFiltro;
+                                else if (filters.scoreOp === 'Inferior a') matchScore = valPerfil <= valFiltro;
+                                else if (filters.scoreOp === 'Igual a') matchScore = valPerfil === valFiltro;
+                            }
+                        }
+
+                        return matchNac && matchProf && matchEdad && matchCiudad && matchScore;
+                    }).sort((a, b) => parseFloat(calcularPromedio(b)) - parseFloat(calcularPromedio(a)));
+                }
+
+                if (activeTab === 'CATEGORIAS' && selectedCategory) {
+                    return base.filter(p => obtenerCategoriasDePerfil(p).includes(selectedCategory));
+                }
+
+                return base;
+            }, [perfiles, searchQuery, activeTab, selectedCategory, filters]);
+            const getSortValue = (profile, key) => {
+                if (key === 'promedio') return Number(calcularPromedio(profile)) || 0;
+                if (key === 'nombre') return (profile.nombre || '').toLowerCase();
+                if (key === 'nacionalidad') return (profile.nacionalidad || '').toLowerCase();
+                if (key === 'edad') {
+                    const edad = calcularEdad(profile.fechaNacimiento);
+                    return typeof edad === 'number' ? edad : -1;
+                }
+                if (key === 'Rostro') {
+                    return getRostroScore(profile) || 0;
+                }
+                if (key === 'Cuerpo') {
+                    return getCuerpoScore(profile) || 0;
+                }
+                if (key === 'Actitud') {
+                    return getActitudScore(profile) || 0;
+                }
+                return Number(profile.puntuaciones?.[key] || 0);
+            };
+
+            const toggleSort = (key, defaultDirection = 'asc') => {
+                if (sortBy === key) {
+                    setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+                    return;
+                }
+                setSortBy(key);
+                setSortDirection(defaultDirection);
+            };
+
+            const sortedProfiles = [...filteredProfiles].sort((a, b) => {
+                const aValue = getSortValue(a, sortBy);
+                const bValue = getSortValue(b, sortBy);
+
+                let result = 0;
+                if (typeof aValue === 'string' || typeof bValue === 'string') {
+                    result = String(aValue).localeCompare(String(bValue), 'es', { sensitivity: 'base' });
+                } else {
+                    result = aValue - bValue;
+                }
+
+                if (result === 0) {
+                    return (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' });
+                }
+
+                return sortDirection === 'asc' ? result : -result;
+            });
+            return (
+                <div className="app-space-theme flex h-screen overflow-hidden bg-[#020617] stone-wall-surface relative">
+                    {isSidebarOpen && (
+                    <aside className="hud-frame hud-frame--panel w-72 theme-surface-card stone-wall-surface border-r theme-border-secondary flex flex-col p-8 z-20 shadow-xl overflow-y-auto relative">
+                        <div className="corner-ember-glow corner-ember-glow--left corner-ember-glow--top" aria-hidden="true"></div>
+                        <button
+                            onClick={() => setIsSidebarOpen(false)}
+                            className="absolute top-4 right-4 btn-metal btn-metal--silver rounded-full p-2 text-slate-900"
+                            aria-label="Replegar menú lateral"
+                            title="Replegar menú lateral"
+                        >
+                            <LucideIcon name="panel-left-close" size={16} />
+                        </button>
+                        <div className="mb-12 text-center flex-shrink-0">
+                            <h1 className="neon-sign neon-sign--cyan text-5xl font-black text-[var(--metal-gold)] italic tracking-tighter leading-none">G2</h1>
+                            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.3em] mt-2">Elite Database</p>
+                        </div>
+                        <nav className="flex-1 space-y-2 mb-8">
+                            {[
+                                { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
+                                { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
+                                { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
+                                { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
+                                { id: 'GALERIA', icon: 'images', label: 'Galería' }
+                            ].map(item => (
+                                <button
+                                    key={item.id}
+                                    onClick={() => {
+                                        setActiveTab(item.id);
+                                        setSelectedCategory(null);
+                                        setSelectedGalleryBucket(null);
+                                        setSelectedGalleryIndex(null);
+                                    }}
+                                    className={`btn-metal w-full flex items-center gap-4 px-6 py-4 rounded-[2rem] text-sm transition-all ${activeTab === item.id ? 'btn-metal--gold is-active text-[#fffaf0]' : 'btn-metal--silver text-slate-900'}`}
+                                >
+                                    <LucideIcon name={item.icon} size={18} />
+                                    {item.label}
+                                </button>
+                            ))}
+                        </nav>
+
+                        {activeTab === 'GALERIA' && (
+                            <div className="hud-frame hud-frame--panel space-y-5 mb-8 p-6 theme-surface-soft rounded-2xl gothic-frame gothic-frame--secondary animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                <div>
+                                    <h4 className="text-[10px] font-black text-[var(--metal-gold)] uppercase tracking-widest flex items-center gap-2">
+                                        <LucideIcon name="images" size={12} /> Filtros de Galería
+                                    </h4>
+                                    <p className="text-[10px] font-semibold text-slate-500 tracking-[0.08em] mt-2">
+                                        {filteredGalleryPhotos.length} archivos visibles de {sourceGalleryPhotos.length}
+                                    </p>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    {GALLERY_VIEW_MODES.map((mode) => (
+                                        <button
+                                            key={mode}
+                                            onClick={() => setGalleryViewMode(mode)}
+                                            className={`btn-metal px-3 py-3 rounded-2xl text-[10px] transition-all ${galleryViewMode === mode ? 'btn-metal--gold text-[#fffaf0]' : 'btn-metal--silver text-slate-900'}`}
+                                        >
+                                            {GALLERY_VIEW_MODE_LABELS[mode]}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-2">
+                                    <button
+                                        onClick={() => setGalleryFilterLabel('INICIAL')}
+                                        className="btn-neon px-3 py-3 rounded-2xl text-[10px] transition-all"
+                                        style={getGalleryFilterButtonStyle('INICIAL', galleryFilterLabel === 'INICIAL')}
+                                    >
+                                        Inicial
+                                    </button>
+                                    {GALLERY_LABELS.map(label => {
+                                        const isActive = galleryFilterLabel === label;
+                                        return (
+                                            <button
+                                                key={label}
+                                                onClick={() => setGalleryFilterLabel(label)}
+                                                className="btn-neon px-3 py-3 rounded-2xl text-[10px] transition-all"
+                                                style={getGalleryFilterButtonStyle(label, isActive)}
+                                            >
+                                                {label} · {galleryStats[label] || 0}
+                                            </button>
+                                        );
+                                    })}
+                                    <button
+                                        onClick={() => setGalleryFilterLabel('100')}
+                                        className="btn-neon px-3 py-3 rounded-2xl text-[10px] transition-all"
+                                        style={getGalleryFilterButtonStyle('100', galleryFilterLabel === '100')}
+                                    >
+                                        100%
+                                    </button>
+                                </div>
+
+                                <button
+                                    onClick={() => setGalleryFilterLabel('INICIAL')}
+                                    className="w-full text-[9px] font-black text-slate-600 hover:text-[var(--metal-gold)] uppercase tracking-tighter transition-colors"
+                                >
+                                    Limpiar filtro de etiquetas
+                                </button>
+                            </div>
+                        )}
+
+                        {activeTab === 'RANKING' && (
+                            <div className="hud-frame hud-frame--panel space-y-6 mb-8 p-6 theme-surface-soft rounded-2xl gothic-frame gothic-frame--secondary animate-in fade-in slide-in-from-bottom-2 duration-500">
+                                <h4 className="text-[10px] font-black text-[var(--metal-gold)] uppercase tracking-widest flex items-center gap-2">
+                                    <LucideIcon name="filter" size={12} /> Filtros de Ranking
+                                </h4>
+
+                                <div className="space-y-3">
+                                    <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 filter-select" value={filters.nacionalidad} onChange={e => setFilters({...filters, nacionalidad: e.target.value})}>
+                                        <option value="Todas">Nacionalidad: Todas</option>
+                                        {uniqueNacionalidades.filter(n => n !== 'Todas').map(n => <option key={n} value={n}>{n}</option>)}
+                                    </select>
+
+                                    <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 filter-select" value={filters.profesion} onChange={e => setFilters({...filters, profesion: e.target.value})}>
+                                        <option value="Todas">Profesión: Todas</option>
+                                        {uniqueProfesiones.filter(p => p !== 'Todas').map(p => <option key={p} value={p}>{p}</option>)}
+                                    </select>
+
+                                    <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 filter-select" value={filters.ciudad} onChange={e => setFilters({...filters, ciudad: e.target.value})}>
+                                        <option value="Todas">Ciudad: Todas</option>
+                                        {uniqueCiudades.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
+                                    </select>
+
+                                    <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 filter-select" value={filters.edad} onChange={e => setFilters({...filters, edad: e.target.value})}>
+                                        <option value="Todas">Edad: Todas</option>
+                                        <option value="Menores de 30">Menores de 30</option>
+                                        <option value="Mayores de 30">Mayores de 30</option>
+                                    </select>
+
+                                    <div className="pt-2 border-t theme-border-secondary mt-4">
+                                        <p className="text-[9px] font-black text-slate-500 mb-2 uppercase tracking-tighter">Filtro por Atributo</p>
+                                        <select className="w-full theme-surface-card border theme-border-secondary p-3 rounded-2xl text-[11px] font-bold outline-none text-slate-300 mb-2" value={filters.scoreAttr} onChange={e => setFilters({...filters, scoreAttr: e.target.value})}>
+                                            <option>Cualquiera</option>
+                                            {CARACTERISTICAS.map(c => <option key={c} value={c}>{c}</option>)}
+                                        </select>
+                                        {filters.scoreAttr !== 'Cualquiera' && (
+                                            <div className="flex gap-2">
+                                                <select className="flex-1 theme-surface-card border theme-border-secondary p-2 rounded-xl text-[10px] font-bold outline-none text-slate-300" value={filters.scoreOp} onChange={e => setFilters({...filters, scoreOp: e.target.value})}>
+                                                    <option>Superior a</option>
+                                                    <option>Inferior a</option>
+                                                    <option>Igual a</option>
+                                                </select>
+                                                <input type="number" placeholder="0-10" className="w-16 theme-surface-card border theme-border-secondary p-2 rounded-xl text-[10px] font-bold outline-none text-[var(--metal-gold)]" value={filters.scoreVal} onChange={e => setFilters({...filters, scoreVal: e.target.value})} />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                                <button onClick={() => setFilters({nacionalidad:'Todas', profesion:'Todas', edad:'Todas', ciudad:'Todas', scoreAttr:'Cualquiera', scoreOp:'Superior a', scoreVal:''})} className="w-full text-[9px] font-black text-slate-600 hover:text-[var(--metal-gold)] uppercase tracking-tighter transition-colors">Limpiar Filtros</button>
+                            </div>
+                        )}
+
+                        <button
+                            onClick={() => {
+                                setEditingId(null);
+                                setFormData({nombre:'', nacionalidad:'', ciudad:'', profesion:'', fechaNacimiento:'', estaturaCm:'', fotos:[], galeria:{ fotos: [], gifs: [], videos: [] }, batallaFotosPreferidas:getDefaultBattlePhotoPreferences(), puntuaciones:createZeroScores()});
+                                setIsModalOpen(true);
+                            }}
+                            className="btn-metal btn-metal--gold py-5 rounded-[2.2rem] text-[11px] flex items-center justify-center gap-2 flex-shrink-0"
+                        >
+                            <LucideIcon name="plus" size={16} /> Nuevo Perfil
+                        </button>
+                    </aside>
+                    )}
+
+                    <main className="flex-1 flex flex-col overflow-hidden bg-[#020617] stone-wall-surface relative">
+                        <header className="hud-frame hud-frame--header h-24 panel-frosted stone-wall-surface border-b theme-border-secondary flex items-center px-12 justify-between z-10 flex-shrink-0 relative">
+                            <div className="corner-ember-glow corner-ember-glow--left corner-ember-glow--top" aria-hidden="true"></div>
+                            <div className="corner-ember-glow corner-ember-glow--right corner-ember-glow--top" aria-hidden="true"></div>
+                            <div className="flex items-center gap-4 w-full max-w-xl">
+                                <button
+                                    onClick={() => setIsSidebarOpen(prev => !prev)}
+                                    className="btn-metal btn-metal--silver rounded-full p-3 text-slate-900 flex-shrink-0"
+                                    aria-label={isSidebarOpen ? 'Replegar menú lateral' : 'Desplegar menú lateral'}
+                                    title={isSidebarOpen ? 'Replegar menú lateral' : 'Desplegar menú lateral'}
+                                >
+                                    <LucideIcon name={isSidebarOpen ? 'panel-left-close' : 'panel-left-open'} size={18} />
+                                </button>
+                                <div className="relative w-full">
+                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-[var(--metal-gold)]/50">
+                                        <LucideIcon name="search" size={20} />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        placeholder="Buscar por nombre..."
+                                        className="w-full theme-surface-soft py-4 pl-16 pr-8 rounded-full text-sm text-white outline-none focus:ring-2 focus:ring-[var(--glow-gold)] border theme-border-secondary"
+                                        value={searchQuery}
+                                        onChange={e => setSearchQuery(e.target.value)}
+                                    />
+                                </div>
+                            </div>
+                        </header>
+
+                        <div className="hud-section flex-1 overflow-y-auto p-12 relative z-10 stone-wall-surface">
+                            <div className="corner-ember-glow corner-ember-glow--left corner-ember-glow--top" aria-hidden="true"></div>
+                            <div className="corner-ember-glow corner-ember-glow--right corner-ember-glow--top" aria-hidden="true"></div>
+
+   {/* 1. VISTA EXPLORAR (CARPETAS POR PROFESIÓN) */}
+                    {activeTab === 'EXPLORAR' && !selectedCategory && (
+                        <div className="space-y-10 animate-in fade-in duration-500">
+                            <div>
+                                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Explorar</h2>
+                                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Organización automática por profesión</p>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                                {[...new Set(
+                                    (perfiles || [])
+                                        .map(p => String(p?.profesion || '').trim())
+                                        .filter(Boolean)
+                                )].map(prof => {
+                                    const count = (perfiles || []).filter(p => String(p?.profesion || '').trim() === prof).length;
+
+                                    return (
+                                        <div
+                                            key={prof}
+                                            onClick={() => setSelectedCategory(prof)}
+                                            className="theme-surface-card rounded-2xl border theme-border-secondary p-8 text-center cursor-pointer hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] hover:border-[color:color-mix(in_srgb,var(--metal-gold)_50%,transparent)] transition-all group relative overflow-hidden active:scale-95"
+                                        >
+                                            <div className="w-24 h-24 bg-slate-900 rounded-[2rem] flex items-center justify-center text-5xl mx-auto mb-6 shadow-2xl border theme-border-secondary group-hover:scale-110 group-hover:border-cyan-500 transition-all duration-500">
+                                                {getEmoji(prof)}
+                                            </div>
+                                            <h3 className="text-2xl font-black text-white mb-2 truncate uppercase tracking-tighter italic">{prof}</h3>
+                                            <div className="inline-flex items-center gap-2 bg-[var(--metal-bronze)]/10 px-5 py-2 rounded-full border border-cyan-500/20">
+                                                <span className="text-[10px] font-black uppercase text-[var(--metal-gold)] tracking-widest">{count} {count === 1 ? 'Perfil' : 'Perfiles'}</span>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+
+    {/* 2. VISTA DE PERFILES (CUANDO ENTRAS A UNA CARPETA) */}
+    {selectedCategory && (
+        <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
+            <div className="hud-frame hud-frame--panel flex items-center justify-between bg-slate-900/40 p-6 rounded-2xl gothic-frame gothic-frame--ornate gothic-frame--grand">
+                <button
+                    onClick={() => setSelectedCategory(null)}
+                    className="group flex items-center gap-3 text-[var(--metal-gold)] font-black text-xs uppercase tracking-widest"
+                >
+                    <div className="bg-[var(--metal-bronze)]/10 p-2 rounded-xl group-hover:bg-[var(--metal-bronze)] group-hover:text-white transition-all">
+                        <i data-lucide="arrow-left" className="w-4 h-4"></i>
+                    </div>
+                    Volver
+                </button>
+                <h2 className="neon-sign neon-sign--magenta font-title text-6xl font-black italic text-white tracking-[0.08em] leading-none">
+    {/* Si estamos en la pestaña de categorías, buscamos el nombre lindo. Si no, mostramos la profesión directamente */}
+    {activeTab === 'CATEGORIAS'
+        ? (categorias.find(c => c.firebaseId === selectedCategory)?.label || "Archivo del Reino")
+        : selectedCategory
+    }
+</h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-10">
+    {(perfiles || []).filter(p => {
+        if (!p) return false;
+        // Si estamos en la pestaña de Categorías Inteligentes:
+        if (activeTab === 'CATEGORIAS') {
+            const misCategorias = obtenerCategoriasDePerfil(p);
+            return misCategorias.includes(selectedCategory);
+        }
+        // Si estamos en Explorar (por profesión):
+        return String(p.profesion || '').trim().toLowerCase() === String(selectedCategory).trim().toLowerCase();
+    }).map(p => {
+                    const profKey = p.profesion?.toUpperCase() || 'DEFAULT';
+                    const neonClass = (typeof neonColors !== 'undefined' && neonColors[profKey]) ? neonColors[profKey] : { color: '#06b6d4', sombra: 'rgba(6,182,212,0.5)' };
+                    return (
+                        <div
+                            key={p.firebaseId || Math.random()}
+                            onClick={() => {
+                                if (typeof setFormData === 'function') setFormData(mapProfileToFormData(p));
+                                if (typeof setEditingId === 'function') setEditingId(p.firebaseId);
+                                if (typeof setIsModalOpen === 'function') setIsModalOpen(true);
+                            }}
+                            className="profile-card group relative rounded-2xl overflow-hidden cursor-pointer"
+                            style={{
+                                '--card-neon-color': neonClass.color,
+                                '--card-neon-glow': neonClass.sombra
+                            }}
+                        >
+                            <div className="aspect-[4/5] bg-slate-950 relative overflow-hidden">
+                                <img
+                                    src={getSafeImageSrc((p.fotos && p.fotos.length > 0) ? p.fotos[0] : '', 'https://via.placeholder.com/400x500')}
+                                    className="w-full h-full object-cover transition-transform duration-700 opacity-80 group-hover:opacity-100"
+                                    onError={applyCryingEmojiFallback}
+                                />
+
+                                <div className="absolute top-6 right-6 w-14 h-14 bg-slate-900/90 backdrop-blur-md rounded-full flex flex-col items-center justify-center border border-white/10">
+                                    <span className="text-[9px] font-black text-[var(--metal-gold)] leading-none">G2</span>
+                                    <span className="text-lg font-black text-white">
+                                        {typeof calcularPromedio === 'function' ? calcularPromedio(p) : '8.5'}
+                                    </span>
+                                </div>
+
+                                <div className="absolute bottom-4 left-4 right-4">
+                                    <div className="text-bubble w-full bg-black/60 backdrop-blur-md p-4 rounded-2xl border border-white/10">
+                                        <h3 className="text-lg font-black text-white italic tracking-tighter leading-none flex items-center gap-2">
+                                            {p.nombre}
+                                            <span className="text-[var(--metal-gold)] text-sm not-italic">
+                                                ({typeof calcularEdad === 'function' ? calcularEdad(p.fechaNacimiento) : '??'})
+                                            </span>
+                                        </h3>
+                                        <div className="flex justify-between items-center mt-1">
+                                            <span className="text-[var(--metal-gold)] text-[7px] font-black uppercase tracking-widest">{p.profesion}</span>
+                                            <p className="text-[7px] font-bold text-slate-400 uppercase">{p.nacionalidad}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    )}
+
+    {/* 3. VISTA GALERÍA GLOBAL */}
+    {activeTab === 'GALERIA' && !selectedCategory && (
+        <div className="space-y-10 animate-in fade-in duration-500">
+            <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
+                <div>
+                    <h2 className="neon-sign neon-sign--magenta text-4xl font-black italic text-white uppercase tracking-tighter">Galería</h2>
+                    <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">
+                        {`Vista por ${currentGalleryModeLabel} · ${galleryContextLabel}`}
+                    </p>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                    {GALLERY_VIEW_MODES.map((mode) => (
+                        <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setGalleryViewMode(mode)}
+                            className={`btn-metal px-4 py-2 rounded-full text-[10px] tracking-[0.08em] transition-all ${galleryViewMode === mode ? 'btn-metal--gold text-[#fffaf0]' : 'btn-metal--silver text-slate-900'}`}
+                        >
+                            {GALLERY_VIEW_MODE_LABELS[mode]}
+                        </button>
+                    ))}
+                </div>
+
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] px-5 py-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Total</p>
+                        <p className="text-2xl font-black italic text-white mt-1">{sourceGalleryPhotos.length}</p>
+                    </div>
+                    <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] px-5 py-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Visibles</p>
+                        <p className="text-2xl font-black italic text-[var(--metal-gold)] mt-1">{filteredGalleryPhotos.length}</p>
+                    </div>
+                    <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] px-5 py-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Etiquetas</p>
+                        <p className="text-2xl font-black italic text-white mt-1">{GALLERY_LABELS.length}</p>
+                    </div>
+                    <div className="theme-surface-soft gothic-frame gothic-frame--secondary rounded-[1.8rem] px-5 py-4">
+                        <p className="text-[9px] font-black uppercase tracking-[0.25em] text-slate-500">Perfiles</p>
+                        <p className="text-2xl font-black italic text-white mt-1">{new Set(allGalleryPhotos.map(photo => photo.profileId)).size}</p>
+                    </div>
+                </div>
+            </div>
+
+            {galleryViewMode !== 'PERSONAJE' && isGalleryBucketMode && !activeGalleryBucket ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                    {galleryBuckets.map(bucket => (
+                        <button
+                            key={bucket.id}
+                            type="button"
+                            onClick={() => {
+                                setSelectedGalleryBucket(bucket);
+                                setSelectedGalleryIndex(null);
+                            }}
+                            className="group text-left theme-surface-card border theme-border-secondary rounded-[2.4rem] overflow-hidden hover:border-[color:color-mix(in_srgb,var(--metal-gold)_40%,transparent)] hover:shadow-[0_0_30px_rgba(34,211,238,0.12)] transition-all duration-500"
+                        >
+                            <div className="aspect-[4/5] bg-slate-950 relative overflow-hidden">
+                                {bucket.fotoPerfil ? (
+                                    <img
+                                        src={getSafeImageSrc(bucket.fotoPerfil, 'https://via.placeholder.com/400x500')}
+                                        alt={`Portada ${bucket.nombre}`}
+                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 opacity-80 group-hover:opacity-100"
+                                        onError={applyCryingEmojiFallback}
+                                    />
+                                ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-slate-500">
+                                        <LucideIcon name="image-off" size={34} />
+                                    </div>
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-[#020617]/50 to-transparent" />
+                                <div className="absolute inset-x-0 bottom-0 p-5">
+                                    <p className="text-xl font-black italic text-white tracking-tighter leading-none">{bucket.nombre}</p>
+                                    <p className="text-[10px] font-black uppercase tracking-widest text-[var(--metal-gold)] mt-2">{bucket.profesion || 'Perfil'}</p>
+                                    <div className="mt-3 inline-flex items-center gap-2 px-3 py-1 rounded-full border theme-border-secondary bg-slate-950/85 text-[9px] font-black uppercase tracking-[0.2em] text-slate-200">
+                                        {bucket.photos.length} archivos
+                                    </div>
+                                </div>
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            ) : (
+                <>
+                    {galleryViewMode !== 'PERSONAJE' && isGalleryBucketMode && (
+                        <div className="flex items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setSelectedGalleryBucket(null);
+                                    setSelectedGalleryIndex(null);
+                                }}
+                                className="btn-metal btn-metal--silver inline-flex items-center gap-2 px-5 py-3 rounded-full text-[10px] text-slate-900"
+                            >
+                                <LucideIcon name="arrow-left" size={14} />
+                                Volver al índice
+                            </button>
+                        </div>
+                    )}
+
+                    {galleryViewMode === 'PERSONAJE' && (
+                        <div className="space-y-4">
+                            <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+                                <label htmlFor="galleryCharacterSelector" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Selector de personajes</label>
+                                <select
+                                    id="galleryCharacterSelector"
+                                    className="filter-select max-w-lg"
+                                    value=""
+                                    onChange={(event) => addCharacterToGallerySelection(event.target.value)}
+                                >
+                                    <option value="" disabled>{availableCharacterBuckets.length ? 'Seleccionar personaje…' : 'No hay más personajes disponibles'}</option>
+                                    {availableCharacterBuckets.map((bucket) => (
+                                        <option key={bucket.id} value={bucket.id}>
+                                            {bucket.nombre} · {bucket.photos.length} archivos
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            {selectedCharacterBuckets.length > 0 ? (
+                                <div className="flex flex-wrap gap-2">
+                                    {selectedCharacterBuckets.map((bucket) => (
+                                        <button
+                                            key={bucket.id}
+                                            type="button"
+                                            onClick={() => removeCharacterFromGallerySelection(bucket.id)}
+                                            className="btn-metal btn-metal--silver inline-flex items-center gap-2 px-4 py-2 rounded-full text-[10px] text-slate-900"
+                                            title="Quitar personaje de la galería visible"
+                                        >
+                                            {bucket.nombre}
+                                            <LucideIcon name="x" size={12} />
+                                        </button>
+                                    ))}
+                                </div>
+                            ) : (
+                                <p className="text-xs text-slate-400">Seleccioná uno o más personajes para mostrar su multimedia en la galería.</p>
+                            )}
+                        </div>
+                    )}
+
+                    {galleryViewMode === 'ETIQUETA' && (
+                        <div className="hud-frame hud-frame--panel flex flex-wrap gap-3 rounded-2xl p-4">
+                            {GALLERY_LABELS.map(label => (
+                                <button
+                                    key={label}
+                                    onClick={() => toggleEtiquetaSelection(label)}
+                                    className="btn-neon font-title px-4 py-2 rounded-full text-[10px] tracking-[0.08em] transition-all"
+                                    style={getGalleryFilterButtonStyle(label, selectedTagLabels.includes(label))}
+                                >
+                                    {label} · {allGalleryPhotos.filter(photo => photo.label === label).length}
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    {galleryViewMode === 'PERSONAJE' && (
+                        <div className="hud-frame hud-frame--panel flex flex-wrap gap-3 rounded-2xl p-4">
+                            <button
+                                onClick={() => setGalleryFilterLabel('INICIAL')}
+                                className="btn-neon px-4 py-2 rounded-full text-[10px] transition-all"
+                                style={getGalleryFilterButtonStyle('INICIAL', galleryFilterLabel === 'INICIAL')}
+                            >
+                                Inicial
+                            </button>
+                            {GALLERY_LABELS.map(label => {
+                                const isActive = galleryFilterLabel === label;
+                                return (
+                                    <button
+                                        key={label}
+                                        onClick={() => setGalleryFilterLabel(label)}
+                                        className="btn-neon font-title px-4 py-2 rounded-full text-[10px] tracking-[0.08em] transition-all"
+                                        style={getGalleryFilterButtonStyle(label, isActive)}
+                                    >
+                                        {label} · {galleryStats[label] || 0}
+                                    </button>
+                                );
+                            })}
+                            <button
+                                onClick={() => setGalleryFilterLabel('100')}
+                                className="btn-neon px-4 py-2 rounded-full text-[10px] transition-all"
+                                style={getGalleryFilterButtonStyle('100', galleryFilterLabel === '100')}
+                            >
+                                100%
+                            </button>
+                        </div>
+                    )}
+
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            type="button"
+                            onClick={() => openGalleryViewer(0, true)}
+                            disabled={!filteredGalleryPhotos.length}
+                            className="btn-metal btn-metal--gold inline-flex items-center gap-2 px-5 py-3 rounded-full text-[10px] disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <LucideIcon name="play" size={14} />
+                            Play {activeGalleryBucket?.nombre || currentGalleryModeLabel}
+                        </button>
+                        <div className="inline-flex items-center gap-2 rounded-full border theme-border-secondary bg-slate-950/80 px-3 py-2">
+                            <label htmlFor="galleryPlaybackSeconds" className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-300">
+                                Duración
+                            </label>
+                            <select
+                                id="galleryPlaybackSeconds"
+                                className="filter-select"
+                                value={galleryPlaybackSeconds}
+                                onChange={(event) => setGalleryPlaybackSeconds(Number(event.target.value))}
+                            >
+                                {[3, 5, 7, 10].map((seconds) => (
+                                    <option key={seconds} value={seconds}>{seconds} segundos</option>
+                                ))}
+                            </select>
+                        </div>
+                    </div>
+
+                    {filteredGalleryPhotos.length === 0 ? (
+                        <div className="py-24 border border-dashed theme-border-secondary rounded-2xl text-center bg-slate-950/30">
+                            <div className="w-20 h-20 rounded-full bg-slate-900 border theme-border-secondary flex items-center justify-center mx-auto mb-6">
+                                <LucideIcon name="image-off" size={28} className="text-slate-600" />
+                            </div>
+                            <h3 className="font-title text-xl font-black italic text-white tracking-[0.06em]">No hay archivos para mostrar</h3>
+                            <p className="font-title text-xs font-medium text-slate-500 tracking-[0.06em] mt-3">
+                                {galleryViewMode === 'ETIQUETA' && selectedTagLabels.length === 0
+                                    ? 'Seleccioná una o más etiquetas para ver multimedia.'
+                                    : 'Probá con otra búsqueda o quitá el filtro por etiqueta.'}
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
+                            {filteredGalleryPhotos.map((photo, index) => {
+                                const labelStyle = getGalleryLabelStyle(photo.label);
+
+                                return (
+                                    <button
+                                        key={photo.id}
+                                        type="button"
+                                        onClick={() => openGalleryViewer(index)}
+                                        className="group text-left theme-surface-card border theme-border-secondary rounded-[2.4rem] overflow-hidden hover:border-[color:color-mix(in_srgb,var(--metal-gold)_40%,transparent)] hover:shadow-[0_0_30px_rgba(34,211,238,0.12)] transition-all duration-500 focus:outline-none focus:ring-2 focus:ring-[var(--glow-gold)] focus:ring-offset-2 focus:ring-offset-[#020617]"
+                                    >
+                                        <div className="aspect-[4/5] relative overflow-hidden bg-slate-950">
+                                            {photo.type === 'video' ? (() => {
+                                                const embedInfo = getVideoEmbedInfo(photo.url);
+                                                if (embedInfo) {
+                                                    return (
+                                                        <div className="w-full h-full bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.3),_rgba(15,23,42,0.95))] flex flex-col items-center justify-center gap-4 p-6 text-center">
+                                                            <div className="w-16 h-16 rounded-full border border-[var(--metal-gold)]/40 bg-slate-950/70 flex items-center justify-center text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] text-2xl">▶</div>
+                                                            <div>
+                                                                <p className="font-title text-sm font-semibold tracking-[0.1em] text-white">Video</p>
+                                                                <p className="font-title text-[10px] font-medium tracking-[0.08em] text-slate-400 mt-2">{embedInfo.provider}</p>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return <video src={photo.url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" muted playsInline preload="metadata" />;
+                                            })() : <img src={getSafeImageSrc(photo.url, CRYING_EMOJI_FALLBACK)} alt={`${photo.nombre} - ${photo.label || 'galería'}`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" onError={applyCryingEmojiFallback} />}
+                                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-cyan-950/40 via-transparent to-transparent" />
+                                            <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-[#020617] via-[#020617]/60 to-transparent">
+                                                <div className="flex items-end justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-lg font-black italic text-white tracking-tighter leading-none">{photo.nombre}</p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--metal-gold)] mt-2">{photo.profesion}</p>
+                                                        {photo.nacionalidad && (
+                                                            <p className="font-title text-[9px] font-medium tracking-[0.06em] text-slate-400 mt-1">{photo.nacionalidad}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <div className="px-3 py-1 rounded-full border theme-border-secondary bg-slate-950/85 text-[9px] font-black uppercase tracking-[0.3em] text-slate-200">
+                                                            {photo.type === 'video' ? 'VIDEO' : (photo.isGif ? 'GIF' : 'IMG')}
+                                                        </div>
+                                                        <div
+                                                            className="min-w-[46px] h-[46px] rounded-2xl border flex items-center justify-center text-sm font-black uppercase shadow-xl"
+                                                            style={{
+                                                                background: labelStyle.bg,
+                                                                borderColor: labelStyle.border,
+                                                                color: labelStyle.text,
+                                                                boxShadow: `0 0 16px ${labelStyle.glow}`
+                                                            }}
+                                                        >
+                                                            {photo.label || '—'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </>
+            )}
+
+            {selectedGalleryPhoto && (
+                <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={closeGalleryViewer}>
+                    <button
+                        type="button"
+                        onClick={closeGalleryViewer}
+                        className="btn-metal btn-metal--danger absolute top-4 right-4 sm:top-6 sm:right-6 w-12 h-12 rounded-full flex items-center justify-center"
+                        aria-label="Cerrar visor"
+                    >
+                        <span className="text-[26px] leading-none font-black">✕</span>
+                    </button>
+
+                    <div className="w-full max-w-6xl max-h-full flex flex-col gap-4" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-4 px-1 sm:px-2">
+                            <div>
+                                <p className="text-2xl sm:text-3xl font-black italic text-white tracking-tighter">{selectedGalleryPhoto.nombre}</p>
+                                <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.3em] text-[var(--metal-gold)] mt-2">{selectedGalleryPhoto.profesion}{selectedGalleryPhoto.nacionalidad ? ` · ${selectedGalleryPhoto.nacionalidad}` : ''}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {filteredGalleryPhotos.length > 1 && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsGalleryPlaying((prev) => !prev)}
+                                            className="btn-metal btn-metal--gold px-4 py-2 rounded-full text-[10px]"
+                                        >
+                                            {isGalleryPlaying ? 'Pause' : 'Play'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsGalleryRandom((prev) => !prev)}
+                                            className={`btn-metal px-4 py-2 rounded-full text-[10px] transition-all ${isGalleryRandom ? 'btn-metal--gold is-active text-[#fffaf0]' : 'btn-metal--silver text-slate-900'}`}
+                                        >
+                                            Aleatorio {isGalleryRandom ? 'ON' : 'OFF'}
+                                        </button>
+                                    </>
+                                )}
+                                <div className="px-3 py-2 rounded-full border theme-border-secondary bg-slate-950/85 text-[10px] font-black uppercase tracking-[0.3em] text-slate-200">
+                                    {selectedGalleryPhoto.type === 'video' ? 'VIDEO' : (selectedGalleryPhoto.isGif ? 'GIF' : 'IMG')}
+                                </div>
+                                <div
+                                    className="min-w-[52px] h-[52px] rounded-2xl border flex items-center justify-center text-base font-black uppercase shadow-xl"
+                                    style={{
+                                        background: getGalleryLabelStyle(selectedGalleryPhoto.label).bg,
+                                        borderColor: getGalleryLabelStyle(selectedGalleryPhoto.label).border,
+                                        color: getGalleryLabelStyle(selectedGalleryPhoto.label).text,
+                                        boxShadow: `0 0 20px ${getGalleryLabelStyle(selectedGalleryPhoto.label).glow}`
+                                    }}
+                                >
+                                    {selectedGalleryPhoto.label || '—'}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="relative flex-1 min-h-0 rounded-[2rem] overflow-hidden border theme-border-secondary bg-black/50">
+                            {selectedGalleryPhoto.type === 'video' ? (() => {
+                                const embedInfo = getVideoEmbedInfo(selectedGalleryPhoto.url);
+                                if (embedInfo) {
+                                    return (
+                                        <iframe
+                                            src={embedInfo.src}
+                                            title={`${selectedGalleryPhoto.nombre} video`}
+                                            className="w-full h-[calc(100vh-14rem)] bg-black"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                            allowFullScreen
+                                        />
+                                    );
+                                }
+                                return (
+                                    <video
+                                        src={selectedGalleryPhoto.url}
+                                        controls
+                                        playsInline
+                                        autoPlay={isGalleryPlaying}
+                                        onEnded={() => {
+                                            if (isGalleryPlaying && filteredGalleryPhotos.length > 1) {
+                                                showNextGalleryPhoto();
+                                            }
+                                        }}
+                                        onError={() => {
+                                            if (filteredGalleryPhotos.length > 1) {
+                                                showNextGalleryPhoto();
+                                            }
+                                        }}
+                                        className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
+                                    />
+                                );
+                            })() : (
+                                <img
+    src={getSafeImageSrc(selectedGalleryPhoto.url, CRYING_EMOJI_FALLBACK)}
+    alt={`${selectedGalleryPhoto.nombre} - ${selectedGalleryPhoto.label || 'galería'}`}
+    className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
+    onError={(e) => {
+        // 1. Aplicamos el fallback visual por si acaso
+        applyCryingEmojiFallback(e);
+        
+        // 2. Pasamos a la siguiente foto si hay más de una
+        if (filteredGalleryPhotos.length > 1) {
+            showNextGalleryPhoto();
+        }
+    }}
+/>
+                            )}
+
+                            {filteredGalleryPhotos.length > 1 && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={(event) => { event.stopPropagation(); showPreviousGalleryPhoto(); }}
+                                        className="absolute left-4 bottom-4 sm:left-6 sm:bottom-6 w-10 h-10 rounded-full border theme-border-secondary bg-slate-900/90 text-white flex items-center justify-center hover:border-[var(--metal-gold)] hover:text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] transition-all shadow-lg shadow-black/40"
+                                        aria-label="Foto anterior"
+                                    >
+                                        <span className="text-[20px] leading-none font-black">←</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(event) => { event.stopPropagation(); showNextGalleryPhoto(); }}
+                                        className="absolute right-4 bottom-4 sm:right-6 sm:bottom-6 w-10 h-10 rounded-full border theme-border-secondary bg-slate-900/90 text-white flex items-center justify-center hover:border-[var(--metal-gold)] hover:text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] transition-all shadow-lg shadow-black/40"
+                                        aria-label="Foto siguiente"
+                                    >
+                                        <span className="text-[20px] leading-none font-black">→</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-1 sm:px-2">
+                            <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400">
+                                {selectedGalleryIndex + 1} de {filteredGalleryPhotos.length} archivos visibles
+                            </p>
+                            <div className="flex items-center justify-start sm:justify-end gap-2">
+                                {isEditingGalleryLabel ? (
+                                    <>
+                                        <select
+                                            value={galleryLabelDraft}
+                                            onChange={(event) => setGalleryLabelDraft(event.target.value)}
+                                            className="bg-slate-900 border theme-border-secondary rounded-lg px-2 py-1 text-[10px] font-bold uppercase tracking-[0.14em] text-white focus:outline-none focus:border-[var(--metal-gold)]"
+                                        >
+                                            <option value="">Sin etiqueta</option>
+                                            {GALLERY_LABELS.map((label) => (
+                                                <option key={label} value={label}>{label}</option>
+                                            ))}
+                                        </select>
+                                        <button
+                                            type="button"
+                                            onClick={saveSelectedGalleryLabel}
+                                            className="px-2 py-1 rounded-lg border theme-border-secondary bg-slate-900 text-[10px] font-black uppercase tracking-[0.14em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] transition-all"
+                                        >
+                                            Guardar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setGalleryLabelDraft(selectedGalleryPhoto?.label || '');
+                                                setIsEditingGalleryLabel(false);
+                                            }}
+                                            className="px-2 py-1 rounded-lg border theme-border-secondary bg-slate-900 text-[10px] font-black uppercase tracking-[0.14em] text-slate-300 hover:text-white transition-all"
+                                        >
+                                            Cancelar
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsEditingGalleryLabel(true)}
+                                        className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border theme-border-secondary bg-slate-900 text-[10px] font-black uppercase tracking-[0.16em] text-slate-300 hover:border-[var(--metal-gold)] hover:text-[var(--metal-gold)] transition-all"
+                                        aria-label="Editar etiqueta de la multimedia"
+                                    >
+                                        <span className="text-xs leading-none">✏️</span>
+                                        <span>{selectedGalleryPhoto?.label || 'Sin etiqueta'}</span>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+        </div>
+    )}
+
+    {/* 3. VISTA BATALLAS */}
+    {activeTab === 'BATALLAS' && !selectedCategory && !selectedArena && (
+        <div className="space-y-10 animate-in fade-in duration-500">
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                    <button
+                        onClick={() => setActiveTab('EXPLORAR')}
+                        className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                    >
+                        <i data-lucide="chevron-left" className="w-4 h-4"></i>
+                        Volver a Explorar
+                    </button>
+                    <button
+                        onClick={resetAllScores}
+                        className="bg-red-600/20 text-red-300 border border-red-400/40 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] hover:bg-red-600 hover:text-white transition-all"
+                    >
+                        Resetear calificaciones
+                    </button>
+                    <button
+                        onClick={() => setShowResetArenaPicker(prev => !prev)}
+                        className="bg-amber-500/20 text-amber-200 border border-amber-300/40 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] hover:bg-amber-500 hover:text-slate-950 transition-all"
+                    >
+                        Resetear item
+                    </button>
+                </div>
+                {showResetArenaPicker && (
+                    <div className="theme-surface-card border theme-border-secondary rounded-2xl p-4 flex flex-wrap items-center gap-3">
+                        <select
+                            value={resetArenaTarget}
+                            onChange={(e) => setResetArenaTarget(e.target.value)}
+                            className="bg-slate-900 border theme-border-secondary rounded-xl px-4 py-2 text-xs font-black uppercase tracking-[0.12em] text-white"
+                        >
+                            {ARENAS.map((arenaName) => (
+                                <option key={arenaName} value={arenaName}>{arenaName}</option>
+                            ))}
+                        </select>
+                        <button
+                            onClick={() => resetArenaScores(resetArenaTarget)}
+                            className="bg-red-500/20 text-red-300 border border-red-400/40 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] hover:bg-red-500 hover:text-white transition-all"
+                        >
+                            Confirmar reset item
+                        </button>
+                    </div>
+                )}
+                <div>
+                    <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Arenas</h2>
+                    <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Elegí uno de los 15 ítems para iniciar las batallas</p>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                {ARENAS.map((arenaName) => (
+                    <button
+                        key={arenaName}
+                        onClick={() => {
+                            setSelectedArena(arenaName);
+                            if (!arenaBattleState[arenaName]) initArenaBattle(arenaName);
+                        }}
+                        className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
+                    >
+                        <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Item</p>
+                        <h3 className="text-2xl font-black italic text-white mt-2">{arenaName}</h3>
+                    </button>
+                ))}
+            </div>
+        </div>
+    )}
+
+    {activeTab === 'BATALLAS' && selectedArena && (() => {
+        const arenaState = arenaBattleState[selectedArena];
+        const champion = perfiles.find(p => p.firebaseId === arenaState?.championId);
+        const challenger = perfiles.find(p => p.firebaseId === arenaState?.challengerId);
+        const championStats = champion ? getArenaStats(selectedArena, champion.firebaseId) : null;
+        const challengerStats = challenger ? getArenaStats(selectedArena, challenger.firebaseId) : null;
+
+        return (
+            <div className="space-y-8 animate-in fade-in duration-500">
+                <div className="bg-slate-900/95 backdrop-blur-sm p-4 sm:p-6 rounded-2xl border theme-border-secondary space-y-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <button
+                            onClick={() => setSelectedArena(null)}
+                            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                        >
+                            <i data-lucide="arrow-left" className="w-4 h-4"></i>
+                            Volver a arenas
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('EXPLORAR')}
+                            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                        >
+                            <i data-lucide="layout-grid" className="w-4 h-4"></i>
+                            Ir a Explorar
+                        </button>
+                        <button
+                            onClick={() => setShowBattleResetPanel(prev => !prev)}
+                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-400/40 text-[11px] font-black uppercase tracking-[0.16em] text-red-300 hover:bg-red-600 hover:text-white transition-all"
+                        >
+                            Resetear una batalla
+                        </button>
+                    </div>
+                    {showBattleResetPanel && (
+                        <div className="theme-surface-card border border-red-400/30 rounded-2xl p-4 mt-3">
+                            {(() => {
+                                const playedKeys = Object.keys(arenaState?.matchups || {}).filter((key) => !!arenaState?.matchups?.[key]);
+                                if (!arenaState || !playedKeys.length) {
+                                    return <p className="text-xs text-red-200 font-bold uppercase tracking-[0.12em]">No hay cruces jugados para resetear.</p>;
+                                }
+
+                                return (
+                                    <div className="space-y-2">
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-200">Elegí el cruce a deshacer:</p>
+                                        {playedKeys.map((pairKey) => {
+                                            const [profileAId, profileBId] = pairKey.split('__');
+                                            const profileA = perfiles.find((profile) => profile.firebaseId === profileAId);
+                                            const profileB = perfiles.find((profile) => profile.firebaseId === profileBId);
+                                            const labelA = profileA?.nombre || profileAId;
+                                            const labelB = profileB?.nombre || profileBId;
+
+                                            return (
+                                                <button
+                                                    key={pairKey}
+                                                    onClick={() => resetSpecificBattle(selectedArena, profileAId, profileBId)}
+                                                    className="w-full text-left px-3 py-2 rounded-xl border theme-border-secondary bg-slate-900/60 hover:border-red-300/70 transition-all"
+                                                >
+                                                    <span className="text-xs text-white font-semibold">{labelA} vs {labelB}</span>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
+                    <div className="min-w-0">
+                        <h2 className="font-title text-2xl sm:text-3xl lg:text-4xl font-black italic text-white tracking-[0.08em] break-words leading-tight">
+                            {selectedArena}
+                        </h2>
+                        <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-400 mt-1">
+                            Arena activa
+                        </p>
+                    </div>
+                </div>
+
+                {!arenaState && (
+                    <div className="theme-surface-card border theme-border-secondary rounded-2xl p-8 text-center">
+                        <p className="text-sm text-slate-300">Presioná para iniciar esta arena.</p>
+                        <button
+                            onClick={() => initArenaBattle(selectedArena)}
+                            className="mt-4 bg-[var(--metal-bronze)] text-white px-5 py-3 rounded-xl font-black uppercase text-xs tracking-[0.2em]"
+                        >
+                            Iniciar batallas
+                        </button>
+                    </div>
+                )}
+
+                {arenaState && arenaState.isFinished && (
+                    <div className="theme-surface-card border theme-border-secondary rounded-2xl p-8 text-center">
+                        <h3 className="text-2xl font-black italic text-white">Arena completada</h3>
+                        <p className="text-slate-400 mt-2">No quedan combates nuevos para este item.</p>
+                    </div>
+                )}
+
+                {arenaState && champion && challenger && !arenaState.isFinished && (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+                        <button
+                            onClick={() => registerBattleWinner(selectedArena, champion.firebaseId)}
+                            className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
+                        >
+                            <img
+                                src={getBattlePhotoForArena(champion, selectedArena)}
+                                alt={champion.nombre}
+                                className="w-full h-64 object-contain rounded-xl border border-slate-700/60 mb-5 bg-slate-950/70 p-2"
+                                onError={applyCryingEmojiFallback}
+                            />
+                            <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">Versus</p>
+                            <h3 className="text-3xl font-black italic text-white mt-2">{champion.nombre}</h3>
+                            {selectedArena === 'Estatura' && (
+                                <p className="text-xs text-slate-200 mt-2">Altura: {getProfileHeightLabel(champion)}</p>
+                            )}
+                            <p className="text-xs text-[var(--metal-gold)] mt-3">Victorias: {championStats?.wins || 0} · Batallas: {championStats?.battles || 0}</p>
+                            <p className="text-xs text-white/80 mt-1">Puntaje final: {championStats?.score || 0}</p>
+                        </button>
+
+                        <div className="flex flex-col items-center justify-center text-center">
+                            <div className="font-title text-4xl text-[var(--metal-gold)] font-black">VS</div>
+                            {selectedArena === 'Estatura' && (
+                                <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300 mt-3">
+                                    Compará altura en cm
+                                </p>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId)}
+                            className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
+                        >
+                            <img
+                                src={getBattlePhotoForArena(challenger, selectedArena)}
+                                alt={challenger.nombre}
+                                className="w-full h-64 object-contain rounded-xl border border-slate-700/60 mb-5 bg-slate-950/70 p-2"
+                                onError={applyCryingEmojiFallback}
+                            />
+                            <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">Versus</p>
+                            <h3 className="text-3xl font-black italic text-white mt-2">{challenger.nombre}</h3>
+                            {selectedArena === 'Estatura' && (
+                                <p className="text-xs text-slate-200 mt-2">Altura: {getProfileHeightLabel(challenger)}</p>
+                            )}
+                            <p className="text-xs text-[var(--metal-gold)] mt-3">Victorias: {challengerStats?.wins || 0} · Batallas: {challengerStats?.battles || 0}</p>
+                            <p className="text-xs text-white/80 mt-1">Puntaje final: {challengerStats?.score || 0}</p>
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    })()}
+
+    {/* 4. VISTA RANKING (SOLO TABLA) */}
+    {activeTab === 'RANKING' && !selectedCategory && (
+        <div className="theme-surface-card rounded-2xl gothic-frame gothic-frame--ornate animate-in zoom-in-95 duration-500">
+            <table className="w-full text-left border-collapse">
+                <thead className="theme-surface-soft">
+                    <tr>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">#</th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('nombre', 'asc')}
+                                className="inline-flex items-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Perfil {sortBy === 'nombre' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Rostro</th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Cuerpo</th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Actitud</th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('nacionalidad', 'asc')}
+                                className="inline-flex items-center justify-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Ubicación {sortBy === 'nacionalidad' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('edad', 'desc')}
+                                className="inline-flex items-center justify-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Edad {sortBy === 'edad' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
+                        <th className="px-8 py-6 text-right">
+                            <div className="flex flex-col items-end gap-1">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Ordenar por</span>
+                                <select
+                                    value={sortBy}
+                                    onChange={(e) => {
+                                        setSortBy(e.target.value);
+                                        setSortDirection('desc');
+                                    }}
+                                    className="bg-slate-900 border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] text-[var(--metal-gold)] text-[10px] font-black uppercase py-1 px-2 rounded-lg outline-none cursor-pointer hover:border-cyan-500 transition-all"
+                                >
+                                    <option value="promedio">G2 SCORE TOTAL (PROMEDIO)</option>
+                                    <optgroup label="Categorías Principales" className="theme-surface-card text-slate-500">
+                                        <option value="Rostro">Rostro (Mix)</option>
+                                        <option value="Cuerpo">Cuerpo (Mix)</option>
+                                        <option value="Actitud">Actitud (Mix)</option>
+                                    </optgroup>
+                                    <optgroup label="Atributos Específicos" className="theme-surface-card text-slate-500">
+                                        {CARACTERISTICAS.map(cat => (
+                                            <option key={cat} value={cat}>{cat}</option>
+                                        ))}
+                                    </optgroup>
+                                </select>
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {sortedProfiles.map((p, idx) => (
+<tr key={p.id} onClick={() => { setFormData(mapProfileToFormData(p)); setEditingId(p.id); setIsModalOpen(true); }}
+    className={`cursor-pointer border-b border-slate-700/70 last:border-0 transition-all duration-300 group ${idx === 0 ? 'podium-1' : idx === 1 ? 'podium-2' : idx === 2 ? 'podium-3' : 'hover:bg-white/5'}`}>
+
+    <td className="px-8 py-5">
+        <span className={`font-black italic rock-carved-text ${idx === 0 ? 'text-gold text-4xl' : idx === 1 ? 'text-silver text-3xl' : idx === 2 ? 'text-bronze text-2xl' : 'text-slate-600 text-lg'}`}>#{idx + 1}</span>
+    </td>
+
+    <td className="px-8 py-5">
+        <div className="flex items-center gap-4">
+            {/* MINIATURA CON NEÓN */}
+            <div className="w-14 h-14 rounded-xl border-2 p-0.5 transition-all duration-500"
+     style={{
+         borderColor: (neonColors[p.profesion?.toUpperCase()] || neonColors["DEFAULT"]).color,
+         boxShadow: `0 0 10px ${(neonColors[p.profesion?.toUpperCase()] || neonColors["DEFAULT"]).sombra}`
+     }}>
+                <img src={getSafeImageSrc(p.fotos?.[0], 'https://via.placeholder.com/400x500')} className="w-full h-full object-cover transition-transform duration-700 opacity-80 group-hover:opacity-100" onError={applyCryingEmojiFallback} />
+            </div>
+            <div>
+                <p className="font-title font-black text-white text-sm tracking-[0.06em] rock-carved-text">{p.nombre}</p>
+                <p className="font-title text-[10px] font-medium tracking-[0.06em] rock-carved-text">{p.profesion}</p>
+            </div>
+        </div>
+    </td>
+
+{/* Promedios por Categoría */}
+<td className="px-4 py-5 text-center">
+    <span className="text-xs font-bold text-slate-300">
+        {getRostroScore(p).toFixed(0)}
+    </span>
+</td>
+<td className="px-4 py-5 text-center">
+    <span className="text-xs font-bold text-slate-300">
+        {getCuerpoScore(p).toFixed(0)}
+    </span>
+</td>
+<td className="px-4 py-5 text-center">
+    <span className="text-xs font-bold text-slate-300">
+        {getActitudScore(p).toFixed(0)}
+    </span>
+</td>
+
+{/* Ubicación (País y Ciudad) */}
+<td className="px-4 py-5 text-center">
+    <p className="text-[10px] font-bold text-slate-300 uppercase leading-none">{p.nacionalidad}</p>
+    <p className="text-[8px] font-black text-[var(--metal-gold)]/70 uppercase tracking-tighter">{p.ciudad}</p>
+</td>
+
+{/* Edad */}
+<td className="px-4 py-5 text-center font-bold text-[10px] text-slate-400">
+    {calcularEdad(p.fechaNacimiento)} AÑOS
+</td>
+
+    <td className="px-8 py-5 text-right">
+        <div className={`inline-block bg-slate-900 border px-4 py-2 rounded-xl transition-all duration-300 ${idx === 0 ? 'border-[#ffd700]/50 shadow-[0_0_15px_rgba(255,215,0,0.3)]' : idx === 1 ? 'border-[#c0c0c0]/50 shadow-[0_0_15px_rgba(192,192,192,0.3)]' : idx === 2 ? 'border-[#cd7f32]/50 shadow-[0_0_15px_rgba(205,127,50,0.3)]' : 'theme-border-secondary group-hover:border-[color:color-mix(in_srgb,var(--metal-gold)_50%,transparent)]'}`}>
+            <span className={`font-black leading-none ${idx === 0 ? 'text-gold' : idx === 1 ? 'text-silver' : idx === 2 ? 'text-bronze' : 'text-[var(--metal-gold)] text-lg'}`}>
+                {calcularPromedio(p)}
+            </span>
+        </div>
+    </td>
+</tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    )}
+
+    {/* 4. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
+    {activeTab === 'CATEGORIAS' && !selectedCategory && (
+        <div className="space-y-10 animate-in fade-in duration-500">
+            <div className="flex justify-between items-end">
+                <div>
+                    <h2 className="text-3xl font-black italic text-white uppercase tracking-tighter">Carpetas</h2>
+                </div>
+                <button onClick={() => { resetCatForm(); setIsCatModalOpen(true); }} className="btn-metal btn-metal--gold px-8 py-3 rounded-xl text-xs">
+                    NUEVA CATEGORÍA
+                </button>
+            </div>
+            {categorias.length === 0 ? (
+                <div className="py-20 border-2 border-dashed theme-border-secondary rounded-2xl text-center">
+                    <p className="text-slate-600 font-black italic uppercase">No hay categorías personalizadas</p>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+{categorias.map(cat => (
+<div key={cat.firebaseId} onClick={() => setSelectedCategory(cat.firebaseId)} className="group relative bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] rounded-xl overflow-hidden border theme-border-secondary cursor-pointer hover:border-[var(--metal-gold)]/70 transition-all duration-500 shadow-[inset_0_1px_0_rgba(148,163,184,0.2),0_18px_30px_rgba(2,6,23,0.55)] aspect-[3/4]">
+        {/* BOTONES DE ACCIÓN: EDITAR Y ELIMINAR */}
+        <div className="absolute top-5 right-5 z-50 flex gap-2 opacity-0 group-hover:opacity-100 transition-all duration-300">
+            <button
+    onClick={(e) => {
+        e.stopPropagation();
+        // Preparamos los datos asegurándonos de que las listas existan (si no, ponemos [])
+        setCatFormData({
+            ...cat,
+            reglas: {
+                ...cat.reglas,
+                nacionalidades: cat.reglas?.nacionalidades || [],
+                profesiones: cat.reglas?.profesiones || [],
+                ciudades: cat.reglas?.ciudades || []
+            }
+        });
+        setIsCatModalOpen(true); // Abrimos el modal
+    }}
+    className="w-8 h-8 flex items-center justify-center bg-slate-900/95 hover:bg-[var(--metal-bronze)] text-white rounded-lg border theme-border-secondary transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_6px_16px_rgba(2,6,23,0.45)]"
+>
+    <LucideIcon name="pencil" size={14} />
+</button>
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    if(window.confirm('¿Seguro que querés borrar esta carpeta?')) {
+                        deleteCategory(cat.firebaseId);
+                    }
+                }}
+                className="w-8 h-8 flex items-center justify-center bg-slate-900/95 hover:bg-red-600 text-white rounded-lg border theme-border-secondary transition-colors shadow-[inset_0_1px_0_rgba(255,255,255,0.18),0_6px_16px_rgba(2,6,23,0.45)]"
+            >
+                <LucideIcon name="x" size={14} />
+            </button>
+        </div>
+
+        {/* Imagen de Portada */}
+        <div className="absolute inset-0">
+            <img
+                src={getSafeImageSrc(cat.coverImg, 'https://via.placeholder.com/400x600?text=Sin+Portada')}
+                className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity duration-500"
+                onError={applyCryingEmojiFallback}
+            />
+            <div className="absolute inset-0 bg-gradient-to-t from-[#020617] via-transparent to-transparent"></div>
+        </div>
+
+        {/* Contenido (Nombre y Contador) */}
+        <div className="absolute bottom-0 left-0 right-0 p-6 text-center">
+            <h3 className="text-xl font-black text-white uppercase italic tracking-tighter mb-2 drop-shadow-lg">
+                {cat.label}
+            </h3>
+            <div className="inline-flex items-center gap-2 bg-[var(--metal-bronze)]/20 backdrop-blur-md px-4 py-1.5 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)]">
+                <span className="text-[10px] font-black uppercase text-[var(--metal-gold)] tracking-widest">
+                    {perfiles.filter(p => obtenerCategoriasDePerfil(p).includes(cat.firebaseId)).length} Perfiles
+                </span>
+            </div>
+        </div>
+    </div>
+))}
+                </div>
+            )}
+        </div>
+    )}
+</div>
+                    </main>
+                    {isModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
+                            <div className="bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] w-full max-w-2xl rounded-3xl overflow-hidden shadow-[inset_0_1px_0_rgba(148,163,184,0.22),0_24px_60px_rgba(2,6,23,0.65)] border theme-border-secondary max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
+                               <button
+    onClick={() => setIsModalOpen(false)}
+    className="p-2 hover:bg-slate-800 rounded-full transition-colors"
+>
+    <LucideIcon name="x" size={20} className="text-slate-400" />
+</button>
+                                <form onSubmit={saveProfile} className="flex-1 overflow-y-auto p-12 space-y-12">
+
+                                    <div className="grid grid-cols-1 gap-16">
+    <div className="space-y-8">
+        {/* CABECERA Y VISTA PREVIA */}
+        <div className="flex flex-col items-center gap-6">
+            <div className="flex items-center gap-4 self-start">
+
+                <div className="w-12 h-12 bg-[var(--metal-bronze)] rounded-2xl flex items-center justify-center text-white shadow-lg shadow-cyan-900/50">
+                    <LucideIcon name={editingId ? "user" : "user-plus"} />
+                </div>
+                <h3 className="text-xl font-black italic tracking-tighter text-white">
+                    {editingId ? 'Editar Perfil' : 'Información del Perfil'}
+                </h3>
+                {editingId && (
+                    <button
+    type="button"
+    onClick={() => {
+        const existingWindow = galleryWindowRef.current;
+        const nuevaVentana = existingWindow && !existingWindow.closed ? existingWindow : window.open('', '_blank');
+        galleryWindowRef.current = nuevaVentana;
+        renderGalleryWindow({
+            targetWindow: nuevaVentana,
+            profileName: formData.nombre,
+            profession: formData.profesion,
+            photos: [
+                ...(formData.galeria?.fotos || []).map((item, index) => ({ ...normalizeGalleryItem(item, 'image'), sourceTag: 'fotos', sourceIndex: index })),
+                ...(formData.galeria?.videos || []).map((item, index) => ({ ...normalizeGalleryItem(item, 'video'), sourceTag: 'videos', sourceIndex: index }))
+            ],
+            editingId,
+            battlePhotoPrefs: formData.batallaFotosPreferidas
+        });
+        nuevaVentana.focus();
+    }}
+    className="btn-metal btn-metal--gold ml-4 px-4 py-2 rounded-xl text-[10px] flex items-center gap-2"
+>
+    <LucideIcon name="image" size={14} />
+    Ver Galería
+</button>
+                )}
+            </div>
+
+            {/* CUADRO VISTA PREVIA NEÓN */}
+            <div className="w-48 h-60 rounded-2xl border-2 border-cyan-500 shadow-[0_0_20px_rgba(34,211,238,0.4)] overflow-hidden bg-slate-900 flex items-center justify-center relative group">
+                {formData.fotos.length > 0 && formData.fotos[0] !== "" ? (
+                    <img src={getSafeImageSrc(formData.fotos[0], CRYING_EMOJI_FALLBACK)} className="w-full h-full object-cover" alt="Preview" onError={applyCryingEmojiFallback} />
+                ) : (
+                    <div className="text-center p-4">
+                        <LucideIcon name="image" size={32} className="mx-auto text-slate-700 mb-2" />
+                        <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest">Vista Previa</p>
+                    </div>
+                )}
+            </div>
+            {editingId && urlInput.trim() && (
+                <div className="w-48">
+                    <p className="mb-2 text-[9px] font-black uppercase tracking-[0.3em] text-[var(--metal-gold)]/80">Preview galería</p>
+                    <div className="relative h-32 overflow-hidden rounded-[1.5rem] border border-[color:color-mix(in_srgb,var(--metal-gold)_40%,transparent)] bg-slate-950 shadow-[0_0_20px_rgba(34,211,238,0.15)]">
+                        {galleryMediaType === 'video' ? (() => {
+                            const embedInfo = getVideoEmbedInfo(urlInput);
+                            if (embedInfo) {
+                                return (
+                                    <div className="w-full h-full bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.28),_rgba(15,23,42,0.96))] flex flex-col items-center justify-center gap-2 text-center px-4">
+                                        <div className="w-10 h-10 rounded-full border border-[var(--metal-gold)]/40 bg-slate-950/70 flex items-center justify-center text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] text-lg">▶</div>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-white">{embedInfo.provider}</p>
+                                    </div>
+                                );
+                            }
+                            return <video src={urlInput} className="w-full h-full object-cover" muted playsInline preload="metadata" />;
+                        })() : <img src={getSafeImageSrc(urlInput, CRYING_EMOJI_FALLBACK)} className="w-full h-full object-cover" alt="Preview galería" onError={applyCryingEmojiFallback} />}
+                        {(() => {
+                            const labelStyle = getGalleryLabelStyle(galleryLabel);
+                            return (
+                                <div
+                                    className="absolute bottom-3 left-1/2 flex min-w-[3.25rem] -translate-x-1/2 items-center justify-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.35em] backdrop-blur-md"
+                                    style={{
+                                        background: labelStyle.bg,
+                                        borderColor: labelStyle.border,
+                                        color: labelStyle.text,
+                                        boxShadow: `0 0 14px ${labelStyle.glow}, 0 0 24px ${labelStyle.glow}`,
+                                        textShadow: `0 0 10px ${labelStyle.glow}`
+                                    }}
+                                >
+                                    {galleryLabel}
+                                </div>
+                            );
+                        })()}
+                    </div>
+                </div>
+            )}
+        </div>
+
+        {/* CAMPOS DE TEXTO */}
+        <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+                <input required placeholder="Nombre Artístico" className="col-span-2 w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-bold" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
+
+                <div className="col-span-2 space-y-1">
+                    <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">URL de la Foto (Avatar)</label>
+                    <input
+                        placeholder="https://imagen.com/foto.jpg"
+                        className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-bold text-xs"
+                        value={formData.fotos[0] || ''}
+                        onChange={e => setFormData({...formData, fotos: [e.target.value]})}
+                    />
+                    <input
+                        type="file"
+                        accept="image/*,.gif"
+                        onChange={handleLocalProfilePhotoUpload}
+                        className="w-full theme-surface-soft border border-dashed theme-border-secondary p-4 rounded-xl outline-none text-slate-200 font-semibold text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-cyan-200 file:font-black"
+                    />
+                </div>
+
+                {editingId && (
+                    <div className="col-span-2 space-y-2">
+                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">URL para sumar a la galería</label>
+                        <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(180px,0.7fr)_minmax(190px,0.8fr)]">
+                            <input
+                                placeholder={galleryMediaType === 'video' ? "https://video.com/video.mp4 o https://youtube.com/..." : "https://imagen.com/galeria.jpg"}
+                                className="min-w-0 theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-bold text-xs"
+                                value={urlInput}
+                                onChange={e => setUrlInput(e.target.value)}
+                            />
+                            <select
+                                value={galleryMediaType}
+                                onChange={e => setGalleryMediaType(e.target.value)}
+                                className="w-full theme-surface-soft border theme-border-secondary px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-black text-xs uppercase tracking-[0.25em]"
+                            >
+                                <option value="image">Imagen</option>
+                                <option value="video">Video</option>
+                            </select>
+                            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] xl:grid-cols-[minmax(0,1fr)_minmax(210px,auto)]">
+                                <select
+                                    value={galleryLabel}
+                                    onChange={e => setGalleryLabel(e.target.value)}
+                                    className="w-full theme-surface-soft border theme-border-secondary px-5 py-4 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-black text-xs uppercase tracking-[0.25em]"
+                                >
+                                    {GALLERY_LABELS.map(label => (
+                                        <option key={label} value={label}>Etiqueta {label}</option>
+                                    ))}
+                                </select>
+                                <button
+                                    type="button"
+                                    onClick={() => submitGalleryImage({ successMessage: '¡Foto guardada! Sos un genio.' })}
+                                    className="btn-metal btn-metal--gold w-full sm:w-auto px-6 py-4 rounded-xl text-[10px] sm:min-w-[210px]"
+                                >
+                                    Guardar en galería
+                                </button>
+                            </div>
+                        </div>
+                        <input
+                            type="file"
+                            accept="image/*,video/*,.gif"
+                            onChange={handleLocalGalleryFileUpload}
+                            className="w-full theme-surface-soft border border-dashed theme-border-secondary p-4 rounded-xl outline-none text-slate-200 font-semibold text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-cyan-200 file:font-black"
+                        />
+                    </div>
+                )}
+
+                <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">Nacimiento</label>
+                    <input type="date" className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold" value={formData.fechaNacimiento} onChange={e => setFormData({...formData, fechaNacimiento: e.target.value})} />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">Estatura (cm)</label>
+                    <input placeholder="170" type="number" className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold" value={formData.estaturaCm} onChange={e => setFormData({...formData, estaturaCm: e.target.value})} />
+                </div>
+                <input placeholder="Nacionalidad" className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold" value={formData.nacionalidad} onChange={e => setFormData({...formData, nacionalidad: e.target.value})} />
+                <input placeholder="Ciudad" className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold" value={formData.ciudad} onChange={e => setFormData({...formData, ciudad: e.target.value})} />
+
+                <div className="col-span-2 space-y-1 group">
+                    <label className="text-[9px] font-black text-[var(--metal-gold)]/60 ml-4 uppercase tracking-widest transition-colors group-focus-within:text-[var(--metal-gold)]">
+                        Profesión
+                    </label>
+                    <select
+                        required
+                        className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold appearance-none cursor-pointer transition-all duration-300 focus:border-[var(--metal-gold)] focus:shadow-[0_0_15px_rgba(34,211,238,0.2)] focus:bg-slate-900"
+                        value={formData.profesion}
+                        onChange={e => setFormData({...formData, profesion: e.target.value})}
+                    >
+                        <option value="" className="theme-surface-card">Seleccionar...</option>
+                        <option value="Cantante" className="theme-surface-card">🎤 Cantante</option>
+                        <option value="Actriz" className="theme-surface-card">🎬 Actriz</option>
+                        <option value="Modelo" className="theme-surface-card">👠 Modelo</option>
+                        <option value="NSFW" className="theme-surface-card">🔥 NSFW</option>
+                        <option value="Influencer" className="theme-surface-card">📱 Influencer</option>
+                        <option value="Periodista" className="theme-surface-card">👓 Periodista</option>
+                        <option value="Bailarina" className="theme-surface-card">💃 Bailarina</option>
+                        <option value="Atleta" className="theme-surface-card">🏋️‍♀️ Atleta</option>
+                        <option value="Otro" className="theme-surface-card">📖 Otro</option>
+                    </select>
+                    <div className="absolute right-6 top-1/2 -translate-y-1/2 pointer-events-none text-[var(--metal-gold)]/50">
+                        <LucideIcon name="chevron-down" size={18} />
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+                                    <div className="flex gap-4">
+                                        {editingId && (
+                                            <button type="button" onClick={deleteProfile} className="btn-metal btn-metal--danger px-10 py-8 rounded-xl text-xs">
+                                                <LucideIcon name="trash-2" size={20} />
+                                            </button>
+                                        )}
+                                        <button type="submit" className="btn-metal btn-metal--gold flex-1 py-8 rounded-xl text-xs">
+                                            {editingId ? 'Actualizar Registro' : 'Guardar Perfil'}
+                                        </button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {isCatModalOpen && (
+                        <div className="fixed inset-0 z-50 flex items-center justify-center p-6 bg-slate-950/80 backdrop-blur-sm">
+                            <div className="bg-[linear-gradient(180deg,#0b1222_0%,#050a16_100%)] w-full max-w-5xl rounded-3xl overflow-hidden shadow-[inset_0_1px_0_rgba(148,163,184,0.22),0_24px_60px_rgba(2,6,23,0.65)] border theme-border-secondary max-h-[90vh] flex flex-col relative animate-in zoom-in-95 duration-300">
+                                <button
+    type="button"
+    onClick={() => { resetCatForm(); setIsCatModalOpen(false); }}
+    className="p-4 hover:bg-slate-800 rounded-full transition-all"
+>
+    <LucideIcon name="x" size={24} className="text-slate-400" />
+</button>
+                                <form onSubmit={saveCategory} className="flex-1 overflow-y-auto p-12 space-y-12">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                                        <div className="space-y-8">
+                                            <div className="flex items-center gap-4">
+                                                <div className="w-12 h-12 bg-[var(--metal-bronze)] rounded-2xl flex items-center justify-center text-white">
+                                                    <LucideIcon name="scroll" />
+                                                </div>
+                                                <h3 className="text-xl font-black italic text-white">Nuevo Archivo del Reino</h3>
+                                            </div>
+                                            <div className="space-y-4">
+                                                <input required placeholder="Nombre de la Carpeta" className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none font-bold text-lg text-white" value={catFormData.label} onChange={e => setCatFormData({...catFormData, label: e.target.value})} />
+                                                <div className="w-full">
+                                                    <div className="space-y-1 w-full">
+                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">URL de Portada</label>
+                                                        <input
+                                                            placeholder="https://..."
+                                                            className="w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none text-white font-bold text-xs"
+                                                            value={catFormData.coverImg}
+                                                            onChange={e => setCatFormData({...catFormData, coverImg: e.target.value})}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="space-y-6">
+                                            <h4 className="text-[10px] font-black uppercase text-slate-500 tracking-widest flex items-center gap-2">
+                                                <LucideIcon name="shield" size={12} /> Mandatos de Clasificación del Consejo
+                                            </h4>
+
+                                            <div className="p-8 bg-slate-950/50 border theme-border-secondary rounded-2xl space-y-6">
+                                                <div className="grid grid-cols-2 gap-4">
+{/* Filtro Nacionalidades Acumulable */}
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">NACIONALIDADES</label>
+                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
+                                                            {catFormData.reglas.nacionalidades.map(n => (
+                                                                <span key={n} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
+                                                                    {n} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, nacionalidades: catFormData.reglas.nacionalidades.filter(x => x !== n)}})}>×</button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
+                                                            onChange={e => {
+                                                                if(e.target.value && !catFormData.reglas.nacionalidades.includes(e.target.value))
+                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, nacionalidades: [...catFormData.reglas.nacionalidades, e.target.value]}})
+                                                            }}>
+                                                            <option value="">Añadir país...</option>
+                                                            {uniqueNacionalidades.filter(n => n !== 'Todas').map(n => <option key={n} value={n}>{n}</option>)}
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Filtro Ciudades Acumulable */}
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">CIUDADES</label>
+                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
+                                                            {catFormData.reglas.ciudades.map(c => (
+                                                                <span key={c} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
+                                                                    {c} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, ciudades: catFormData.reglas.ciudades.filter(x => x !== c)}})}>×</button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
+                                                            onChange={e => {
+                                                                if(e.target.value && !catFormData.reglas.ciudades.includes(e.target.value))
+                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, ciudades: [...catFormData.reglas.ciudades, e.target.value]}})
+                                                            }}>
+                                                            <option value="">Añadir ciudad...</option>
+                                                            {uniqueCiudades.filter(c => c !== 'Todas').map(c => <option key={c} value={c}>{c}</option>)}
+                                                        </select>
+                                                    </div>
+
+                                                    {/* Filtro Profesiones Acumulable */}
+                                                    <div className="space-y-1">
+                                                        <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">PROFESIONES</label>
+                                                        <div className="flex flex-wrap gap-1 mb-2 min-h-[20px]">
+                                                            {catFormData.reglas.profesiones.map(p => (
+                                                                <span key={p} className="bg-[var(--metal-bronze)]/20 text-[var(--metal-gold)] text-[8px] font-black px-2 py-1 rounded-full border border-[color:color-mix(in_srgb,var(--metal-gold)_30%,transparent)] flex items-center gap-1">
+                                                                    {p} <button type="button" onClick={() => setCatFormData({...catFormData, reglas: {...catFormData.reglas, profesiones: catFormData.reglas.profesiones.filter(x => x !== p)}})}>×</button>
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                        <select className="w-full theme-surface-card p-3 rounded-xl text-[10px] font-bold border theme-border-secondary text-white outline-none"
+                                                            onChange={e => {
+                                                                if(e.target.value && !catFormData.reglas.profesiones.includes(e.target.value))
+                                                                    setCatFormData({...catFormData, reglas: {...catFormData.reglas, profesiones: [...catFormData.reglas.profesiones, e.target.value]}})
+                                                            }}>
+                                                            <option value="">Añadir profesión...</option>
+                                                            {Object.keys(PROFESIONES_CONFIG).map(p => <option key={p} value={p}>{p}</option>)}
+                                                        </select>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">EDAD MIN</label>
+                                                            <input type="number" placeholder="18" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-white" value={catFormData.reglas.edadMin} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, edadMin: e.target.value}})} />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">EDAD MAX</label>
+                                                            <input type="number" placeholder="30" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-white" value={catFormData.reglas.edadMax} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, edadMax: e.target.value}})} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-1 pt-4 border-t theme-border-secondary">
+                                                    <label className="text-[9px] font-black text-slate-500 ml-4 uppercase">Condición de Score</label>
+                                                    <div className="grid grid-cols-2 gap-2 mb-2">
+                                                        <select className="theme-surface-card p-3 rounded-xl text-[10px] font-bold outline-none border theme-border-secondary text-white" value={catFormData.reglas.caracteristica} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, caracteristica: e.target.value}})}>
+                                                            {CARACTERISTICAS.map(c => <option key={c}>{c}</option>)}
+                                                        </select>
+                                                        <select className="theme-surface-card p-3 rounded-xl text-[10px] font-bold outline-none border theme-border-secondary text-white" value={catFormData.reglas.operador} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, operador: e.target.value}})}>
+                                                            <option>Superior a</option>
+                                                            <option>Inferior a</option>
+                                                        </select>
+                                                    </div>
+                                                    <input type="number" placeholder="Umbral (0-10)" className="w-full theme-surface-card p-4 rounded-2xl outline-none text-xs font-bold border theme-border-secondary text-[var(--metal-gold)]" value={catFormData.reglas.umbral} onChange={e => setCatFormData({...catFormData, reglas: {...catFormData.reglas, umbral: e.target.value}})} />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="submit" className="btn-metal btn-metal--gold w-full py-8 rounded-xl text-xs">
+                                        CREAR CARPETA INTELIGENTE
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);

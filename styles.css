@@ -1,0 +1,279 @@
+@import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;800&family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+:root {
+    --space-0: #02030a;
+    --space-1: #070b1a;
+    --space-2: #0d1630;
+
+    --neon-cyan: #22d3ee;
+    --neon-magenta: #ff3dbe;
+    --neon-lime: #9dff00;
+    --neon-violet: #8b5cf6;
+
+    --metal-steel: #8b99ad;
+    --metal-chrome: #d7e1f0;
+    --metal-shadow: #2a3346;
+
+    --glow-soft: 0 0 14px color-mix(in srgb, var(--neon-cyan) 35%, transparent);
+    --glow-strong: 0 0 28px color-mix(in srgb, var(--neon-cyan) 62%, transparent), 0 0 56px color-mix(in srgb, var(--neon-violet) 28%, transparent);
+    --ring-neon: 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 65%, transparent), 0 0 0 3px color-mix(in srgb, var(--neon-violet) 24%, transparent);
+}
+
+.theme-surface-card {
+    background: linear-gradient(160deg, color-mix(in srgb, var(--space-1) 88%, var(--metal-shadow) 12%), color-mix(in srgb, var(--space-0) 86%, var(--space-2) 14%));
+}
+
+.theme-surface-soft {
+    background: linear-gradient(165deg, color-mix(in srgb, var(--space-1) 82%, var(--space-2) 18%), color-mix(in srgb, var(--space-0) 78%, var(--metal-shadow) 22%));
+}
+
+.theme-border-secondary {
+    border-color: color-mix(in srgb, var(--metal-steel) 56%, var(--space-0) 44%) !important;
+}
+
+body {
+    font-family: 'Inter', sans-serif;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background-color: var(--space-0);
+    background-image:
+        radial-gradient(circle at 12% 18%, rgba(34, 211, 238, 0.14) 0%, transparent 38%),
+        radial-gradient(circle at 82% 10%, rgba(139, 92, 246, 0.12) 0%, transparent 35%),
+        radial-gradient(circle at 30% 82%, rgba(255, 61, 190, 0.08) 0%, transparent 45%),
+        radial-gradient(1px 1px at 22% 34%, rgba(255, 255, 255, 0.36) 99%, transparent),
+        radial-gradient(1px 1px at 72% 52%, rgba(255, 255, 255, 0.3) 99%, transparent),
+        radial-gradient(1.2px 1.2px at 44% 72%, rgba(255, 255, 255, 0.28) 99%, transparent),
+        linear-gradient(165deg, var(--space-0) 0%, var(--space-1) 58%, var(--space-2) 100%);
+    color: #f4f8ff;
+    text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6,
+.font-title {
+    font-family: 'Orbitron', 'Inter', sans-serif;
+    letter-spacing: 0.06em;
+}
+
+.surface-panel,
+.parchment-panel {
+    background:
+        linear-gradient(160deg, color-mix(in srgb, var(--space-1) 90%, var(--metal-shadow) 10%), color-mix(in srgb, var(--space-0) 78%, var(--space-2) 22%));
+    border: 1px solid color-mix(in srgb, var(--metal-steel) 35%, var(--space-0) 65%);
+    box-shadow: inset 0 1px 0 rgba(215, 225, 240, 0.08), inset 0 -12px 24px rgba(0, 0, 0, 0.36);
+}
+
+.surface-panel--metal,
+.stone-wall-surface {
+    background:
+        repeating-linear-gradient(
+            90deg,
+            color-mix(in srgb, var(--metal-shadow) 82%, var(--space-1) 18%) 0 2px,
+            color-mix(in srgb, var(--space-1) 82%, var(--space-0) 18%) 2px 58px,
+            color-mix(in srgb, var(--metal-steel) 18%, transparent) 58px 60px
+        ),
+        linear-gradient(160deg, color-mix(in srgb, var(--metal-shadow) 72%, var(--space-1) 28%), color-mix(in srgb, var(--space-0) 68%, var(--metal-shadow) 32%));
+    border: 1px solid color-mix(in srgb, var(--metal-steel) 48%, var(--space-0) 52%);
+    box-shadow: inset 0 1px 0 rgba(215, 225, 240, 0.16), inset 0 -20px 30px rgba(0, 0, 0, 0.44), 0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+.surface-panel--neon,
+.gothic-frame {
+    position: relative;
+    border: 1px solid color-mix(in srgb, var(--neon-cyan) 62%, var(--space-0) 38%);
+    background:
+        linear-gradient(155deg, color-mix(in srgb, var(--space-1) 88%, var(--neon-violet) 12%), color-mix(in srgb, var(--space-0) 78%, var(--space-2) 22%));
+    box-shadow: var(--glow-soft), inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 30%, transparent);
+}
+
+.gothic-frame--primary,
+.gothic-frame--secondary,
+.gothic-frame--ornate,
+.gothic-frame--grand {
+    box-shadow: var(--glow-strong), inset 0 0 0 1px color-mix(in srgb, var(--neon-cyan) 34%, transparent);
+}
+
+.gothic-frame::before,
+.gothic-frame::after {
+    display: none;
+}
+
+.text-neon {
+    color: var(--neon-cyan);
+    text-shadow: 0 0 8px color-mix(in srgb, var(--neon-cyan) 55%, transparent), 0 0 18px color-mix(in srgb, var(--neon-violet) 35%, transparent);
+}
+
+.border-neon {
+    border: 1px solid color-mix(in srgb, var(--neon-cyan) 72%, var(--space-0) 28%);
+    box-shadow: var(--ring-neon);
+}
+
+.glow-neon {
+    box-shadow: var(--glow-strong);
+}
+
+.btn-metal {
+    color: #f4f8ff;
+    border: 1px solid color-mix(in srgb, var(--metal-chrome) 52%, var(--metal-shadow) 48%);
+    background: linear-gradient(165deg, color-mix(in srgb, var(--metal-shadow) 78%, var(--space-1) 22%), color-mix(in srgb, var(--metal-steel) 30%, var(--metal-shadow) 70%));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.2), 0 8px 16px rgba(0, 0, 0, 0.35);
+}
+
+.btn-neon {
+    color: #f8fbff;
+    border: 1px solid color-mix(in srgb, var(--neon-cyan) 72%, var(--space-0) 28%);
+    background: linear-gradient(155deg, color-mix(in srgb, var(--neon-violet) 48%, var(--space-1) 52%), color-mix(in srgb, var(--neon-cyan) 34%, var(--space-0) 66%));
+    box-shadow: var(--glow-soft);
+}
+
+.btn-neon:hover,
+.btn-metal:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--glow-strong);
+}
+
+.text-bubble {
+    background:
+        linear-gradient(155deg, rgba(15, 24, 43, 0.76), rgba(8, 13, 26, 0.88)),
+        radial-gradient(circle at top, rgba(34, 211, 238, 0.13), transparent 65%);
+    backdrop-filter: blur(3px);
+    border: 1px solid rgba(139, 153, 173, 0.34);
+    box-shadow: inset 0 1px 0 rgba(215, 225, 240, 0.12), 0 3px 18px rgba(0, 0, 0, 0.45);
+    padding: 0.5rem 1rem;
+    border-radius: 1.2rem;
+}
+
+.glass-effect {
+    background:
+        linear-gradient(165deg, rgba(8, 13, 25, 0.92), rgba(3, 7, 18, 0.97)),
+        radial-gradient(circle at top right, rgba(34, 211, 238, 0.1), transparent 45%);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(139, 153, 173, 0.26);
+    box-shadow: inset 0 0 0 1px rgba(139, 153, 173, 0.15), 0 8px 24px rgba(0, 0, 0, 0.42);
+}
+
+.corner-ember-glow {
+    position: absolute;
+    width: 140px;
+    height: 180px;
+    pointer-events: none;
+    z-index: 8;
+    opacity: 0.9;
+}
+
+.corner-ember-glow::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at bottom, rgba(34, 211, 238, 0.32) 0%, rgba(139, 92, 246, 0.24) 34%, rgba(255, 61, 190, 0.08) 56%, rgba(34, 211, 238, 0) 84%);
+    filter: blur(5px);
+}
+
+.corner-ember-glow--left { left: 0; }
+.corner-ember-glow--right { right: 0; transform: scaleX(-1); }
+.corner-ember-glow--top { top: 0; }
+
+.rock-carved-text {
+    color: #e2ecff;
+    text-shadow: 0 1px 0 rgba(255, 255, 255, 0.1), 0 3px 10px rgba(0, 0, 0, 0.62), 0 0 14px rgba(34, 211, 238, 0.24);
+    -webkit-text-stroke: 0.35px rgba(6, 12, 24, 0.84);
+    letter-spacing: 0.12em;
+}
+
+.profile-card {
+    --card-neon-color: rgba(34, 211, 238, 0.85);
+    --card-neon-glow: rgba(34, 211, 238, 0.5);
+    --card-metal-dark: color-mix(in srgb, var(--card-neon-color) 28%, #1f2937 72%);
+    --card-metal-mid: color-mix(in srgb, var(--card-neon-color) 50%, #94a3b8 50%);
+    --card-metal-light: color-mix(in srgb, var(--card-neon-color) 28%, #f8fafc 72%);
+    border: 1px solid color-mix(in srgb, var(--card-neon-color) 55%, rgba(148, 163, 184, 0.45) 45%);
+    box-shadow: 0 0 18px var(--card-neon-glow), inset 0 0 28px color-mix(in srgb, var(--card-neon-glow) 30%, transparent);
+}
+
+.profile-card::before {
+    content: "";
+    position: absolute;
+    inset: 7px;
+    border-radius: 1rem;
+    border: 2px solid transparent;
+    background: linear-gradient(155deg, var(--card-metal-light), var(--card-metal-mid), var(--card-metal-dark)) border-box;
+    -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    opacity: 0.86;
+    pointer-events: none;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.35), inset 0 -2px 4px rgba(2, 6, 23, 0.75), 0 0 18px color-mix(in srgb, var(--card-neon-color) 40%, transparent);
+    transform: translateZ(0);
+    transition: opacity 220ms ease, box-shadow 220ms ease;
+}
+
+.profile-card:hover {
+    box-shadow: 0 0 26px var(--card-neon-glow), 0 0 60px color-mix(in srgb, var(--card-neon-color) 42%, transparent), inset 0 0 55px color-mix(in srgb, var(--card-neon-color) 28%, transparent);
+}
+
+.profile-card:hover::before {
+    opacity: 1;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.46), inset 0 -2px 4px rgba(2, 6, 23, 0.85), 0 0 24px color-mix(in srgb, var(--card-neon-color) 65%, transparent);
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: linear-gradient(180deg, var(--space-0) 0%, var(--space-1) 100%); }
+::-webkit-scrollbar-thumb { background: #253146; border-radius: 10px; }
+
+.profile-card:hover img {
+    transform: scale(1.05);
+}
+
+input[type="range"] {
+    accent-color: var(--neon-cyan);
+}
+
+.filter-select {
+    min-width: 220px;
+    padding: 0.65rem 0.9rem;
+    border-radius: 999px;
+    border: 1px solid color-mix(in srgb, var(--metal-steel) 62%, var(--space-0) 38%);
+    background-color: #050b1a;
+    background-image: linear-gradient(155deg, rgba(10, 19, 37, 0.95), rgba(4, 9, 20, 0.98));
+    color: #f1f5f9;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    box-shadow: inset 0 1px 0 rgba(148, 163, 184, 0.22), 0 0 15px rgba(34, 211, 238, 0.2);
+}
+
+.filter-select option {
+    background-color: #050b1a;
+    color: #f1f5f9;
+}
+
+.filter-select:focus,
+.filter-select:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--neon-cyan) 70%, #ffffff 30%);
+    outline-offset: 2px;
+    border-color: color-mix(in srgb, var(--neon-cyan) 65%, var(--space-0) 35%);
+    box-shadow: var(--ring-neon);
+}
+
+.filter-select--compact {
+    min-width: 0;
+    border-radius: 0.75rem;
+    padding: 0.5rem 0.75rem;
+}
+
+#root:empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    background: linear-gradient(180deg, var(--space-0) 0%, var(--space-1) 100%);
+}
+
+#root:empty::after {
+    content: "Inicializando interfaz estelar...";
+    font-family: 'Orbitron', sans-serif;
+    font-weight: 700;
+    color: var(--neon-cyan);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    font-size: 12px;
+}
