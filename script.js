@@ -2256,6 +2256,13 @@ const saveProfile = (e) => {
                 setIsDeleteProfileModalOpen(true);
             };
 
+            const deleteProfile = () => {
+                if (!editingId) return;
+                const profileToDelete = perfiles.find((profile) => profile.firebaseId === editingId);
+                if (!profileToDelete) return;
+                requestDeleteProfile(profileToDelete);
+            };
+
             const closeDeleteProfileModal = () => {
                 setIsDeleteProfileModalOpen(false);
                 setContextMenuProfileId(null);
