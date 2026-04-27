@@ -2046,6 +2046,7 @@ const getInitialCatFormData = () => ({
                 }
 
                 if (!isGalleryPlaying || !selectedGalleryPhoto) return;
+                if (selectedGalleryPhoto.type === 'video') return;
 
                 const timeoutDuration = galleryPlaybackSeconds * 1000;
                 galleryPlaybackTimeoutRef.current = setTimeout(() => {
