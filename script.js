@@ -2894,6 +2894,10 @@ const saveProfile = (e) => {
                     activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
                     isFinished: !nextPair
                 };
+                const nextArenaBattleState = {
+                    ...(arenaBattleState || {}),
+                    [arenaKey]: nextArenaState
+                };
                 const globalScoreMap = buildArenaScoreMapFromGlobalStats(arenaName, nextArenaBattleState);
 
                 setPerfiles(prev => prev.map(profile => {
@@ -2908,8 +2912,6 @@ const saveProfile = (e) => {
                 Object.entries(globalScoreMap).forEach(([profileId, nextScore]) => {
                     updateProfileArenaScore(profileId, arenaName, nextScore);
                 });
-
-                const nextArenaState = nextArenaBattleState[arenaKey];
 
                 setArenaBattleState(prev => ({
                     ...prev,
