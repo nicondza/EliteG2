@@ -4160,22 +4160,15 @@ const saveProfile = (e) => {
             <div className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center gap-3">
                     <button
-                        onClick={() => setActiveTab('EXPLORAR')}
-                        className="group metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
-                    >
-                        <i data-lucide="chevron-left" className="w-4 h-4"></i>
-                        Volver a Explorar
-                    </button>
-                    <button
                         onClick={resetAllScores}
-                        className="metal-btn-3d bg-red-600/20 text-red-300 border border-red-400/40 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] hover:bg-red-600 hover:text-white transition-all"
+                        className="solid-metal-ui px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] transition-all"
                     >
                         Resetear calificaciones
                     </button>
-                    <button
-                        onClick={() => setShowResetArenaPicker(prev => !prev)}
-                        className="metal-btn-3d bg-amber-500/20 text-amber-200 border border-amber-300/40 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] hover:bg-amber-500 hover:text-slate-950 transition-all"
-                    >
+                        <button
+                            onClick={() => setShowResetArenaPicker(prev => !prev)}
+                            className="solid-metal-ui px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] transition-all"
+                        >
                         Resetear item
                     </button>
                 </div>
@@ -4192,7 +4185,7 @@ const saveProfile = (e) => {
                         </select>
                         <button
                             onClick={() => resetArenaScores(resetArenaTarget, selectedBattleScope, selectedBattleGroupKey)}
-                            className="metal-btn-3d bg-red-500/20 text-red-300 border border-red-400/40 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] hover:bg-red-500 hover:text-white transition-all"
+                            className="solid-metal-ui px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] transition-all"
                             disabled={!selectedBattleScope}
                         >
                             Confirmar reset item
@@ -4221,10 +4214,10 @@ const saveProfile = (e) => {
                                 setSelectedBattleGroupKey(scope.id === 'GENERAL' ? 'all' : '');
                                 setSelectedArena(null);
                             }}
-                            className="theme-surface-card metal-card-3d border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
+                            className="solid-metal-ui battle-mode-card border rounded-2xl p-6 text-left transition-all"
                         >
                             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Modo</p>
-                            <h3 className="text-2xl font-black italic text-white mt-2">{scope.label}</h3>
+                            <h3 className="font-black italic text-white mt-2">{scope.label}</h3>
                             <p className="text-xs text-slate-300 mt-2">{scope.description}</p>
                         </button>
                     ))}
@@ -4243,7 +4236,7 @@ const saveProfile = (e) => {
                                 setSelectedBattleGroupKey('');
                                 setSelectedArena(null);
                             }}
-                            className="metal-btn-3d inline-flex items-center gap-2 px-3 py-2 rounded-xl border theme-border-secondary text-[10px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] transition-all"
+                            className="solid-metal-ui inline-flex items-center gap-2 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] transition-all"
                         >
                             Cambiar modo
                         </button>
@@ -4261,10 +4254,10 @@ const saveProfile = (e) => {
                                             setSelectedBattleGroupKey(option.key);
                                             setSelectedArena(null);
                                         }}
-                                        className={`metal-btn-3d px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                        className={`solid-metal-ui px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
                                             selectedBattleGroupKey === option.key
-                                                ? 'border-[var(--metal-gold)] text-[var(--metal-gold)] bg-[var(--metal-bronze)]/20'
-                                                : 'theme-border-secondary text-slate-200 hover:border-[var(--metal-gold)]'
+                                                ? 'border-[var(--metal-gold)] text-white'
+                                                : 'theme-border-secondary text-slate-200'
                                         }`}
                                     >
                                         {option.label} <span className="text-slate-400">({option.ids.length})</span>
@@ -4286,10 +4279,10 @@ const saveProfile = (e) => {
                             const arenaKey = getArenaBattleKey(arenaName, selectedBattleScope, selectedBattleGroupKey);
                             if (!arenaBattleState[arenaKey]) initArenaBattle(arenaName, selectedBattleScope, selectedBattleGroupKey);
                         }}
-                        className="theme-surface-card metal-card-3d border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all disabled:opacity-45 disabled:cursor-not-allowed"
+                        className="solid-metal-ui battle-mode-card border rounded-2xl p-6 text-left transition-all disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Item</p>
-                        <h3 className="text-2xl font-black italic text-white mt-2">{arenaName}</h3>
+                        <h3 className="font-black italic text-white mt-2">{arenaName}</h3>
                     </button>
                         ))}
                     </div>
@@ -4312,7 +4305,7 @@ const saveProfile = (e) => {
                     <div className="flex flex-wrap items-center gap-3">
                         <button
                             onClick={() => setSelectedArena(null)}
-                            className="group metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                            className="group solid-metal-ui inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-[0.16em] transition-all"
                         >
                             <i data-lucide="arrow-left" className="w-4 h-4"></i>
                             Volver a arenas
@@ -4323,21 +4316,14 @@ const saveProfile = (e) => {
                                 setSelectedBattleScope(null);
                                 setSelectedBattleGroupKey('');
                             }}
-                            className="group metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                            className="group solid-metal-ui inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-[0.16em] transition-all"
                         >
                             <i data-lucide="refresh-ccw" className="w-4 h-4"></i>
                             Cambiar modo
                         </button>
                         <button
-                            onClick={() => setActiveTab('EXPLORAR')}
-                            className="group metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
-                        >
-                            <i data-lucide="layout-grid" className="w-4 h-4"></i>
-                            Ir a Explorar
-                        </button>
-                        <button
                             onClick={() => setShowBattleResetPanel(prev => !prev)}
-                            className="metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-400/40 text-[11px] font-black uppercase tracking-[0.16em] text-red-300 hover:bg-red-600 hover:text-white transition-all"
+                            className="solid-metal-ui inline-flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-black uppercase tracking-[0.16em] transition-all"
                         >
                             Resetear una batalla
                         </button>
@@ -4413,7 +4399,8 @@ const saveProfile = (e) => {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
                         <button
                             onClick={() => registerBattleWinner(selectedArena, champion.firebaseId, selectedBattleScope, selectedBattleGroupKey)}
-                            className="theme-surface-card metal-card-3d battle-participant-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
+                            className="theme-surface-card metal-card-3d battle-participant-card border theme-border-secondary rounded-2xl p-8 transition-all text-left"
+                            style={{ '--battle-profession-color': getProfessionCardVisual(champion.profesion).baseColor }}
                         >
                             <img
                                 src={getBattlePhotoForArena(champion, selectedArena)}
@@ -4422,7 +4409,7 @@ const saveProfile = (e) => {
                                 onError={applyCryingEmojiFallback}
                             />
                             <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">Versus</p>
-                            <h3 className="text-3xl font-black italic text-white mt-2">{champion.nombre}</h3>
+                            <h3 className="text-2xl sm:text-3xl font-black italic text-white mt-2">{champion.nombre}</h3>
                             {selectedArena === 'Estatura' && (
                                 <p className="text-xs text-slate-200 mt-2">Altura: {getProfileHeightLabel(champion)}</p>
                             )}
@@ -4441,7 +4428,8 @@ const saveProfile = (e) => {
 
                         <button
                             onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId, selectedBattleScope, selectedBattleGroupKey)}
-                            className="theme-surface-card metal-card-3d battle-participant-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
+                            className="theme-surface-card metal-card-3d battle-participant-card border theme-border-secondary rounded-2xl p-8 transition-all text-left"
+                            style={{ '--battle-profession-color': getProfessionCardVisual(challenger.profesion).baseColor }}
                         >
                             <img
                                 src={getBattlePhotoForArena(challenger, selectedArena)}
@@ -4450,7 +4438,7 @@ const saveProfile = (e) => {
                                 onError={applyCryingEmojiFallback}
                             />
                             <p className="text-[9px] font-black uppercase tracking-[0.3em] text-slate-500">Versus</p>
-                            <h3 className="text-3xl font-black italic text-white mt-2">{challenger.nombre}</h3>
+                            <h3 className="text-2xl sm:text-3xl font-black italic text-white mt-2">{challenger.nombre}</h3>
                             {selectedArena === 'Estatura' && (
                                 <p className="text-xs text-slate-200 mt-2">Altura: {getProfileHeightLabel(challenger)}</p>
                             )}

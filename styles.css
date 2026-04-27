@@ -352,6 +352,28 @@ h1, h2, h3, h4, h5, h6,
         0 0 54px color-mix(in srgb, var(--neon-cyan) 34%, transparent);
 }
 
+.solid-metal-ui {
+    border: 1px solid color-mix(in srgb, #94a3b8 58%, rgba(148, 163, 184, 0.12) 42%);
+    background:
+        radial-gradient(circle at 24% 18%, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.1) 24%, transparent 54%),
+        linear-gradient(160deg, #cbd5e1 0%, #64748b 34%, #1e293b 100%);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.38),
+        inset 0 -16px 24px rgba(2, 6, 23, 0.62),
+        0 10px 20px rgba(2, 6, 23, 0.48);
+    color: #dbeafe;
+}
+
+.solid-metal-ui:hover {
+    border-color: color-mix(in srgb, var(--neon-cyan) 72%, #ffffff 28%);
+    color: #f8fbff;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.48),
+        inset 0 -18px 28px rgba(2, 6, 23, 0.74),
+        0 14px 26px rgba(2, 6, 23, 0.56),
+        0 0 26px color-mix(in srgb, var(--neon-cyan) 44%, transparent);
+}
+
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: linear-gradient(180deg, var(--space-0) 0%, var(--space-1) 100%); }
 ::-webkit-scrollbar-thumb { background: #253146; border-radius: 10px; }
@@ -490,4 +512,41 @@ button:hover,
 .battle-participant-card h3 {
     line-height: 1.1;
     text-wrap: pretty;
+}
+
+.battle-mode-card {
+    aspect-ratio: 1 / 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-height: 210px;
+}
+
+.battle-mode-card h3 {
+    font-size: clamp(1.8rem, 2.6vw, 2.25rem);
+    line-height: 1.05;
+    overflow-wrap: anywhere;
+}
+
+.battle-participant-card {
+    --battle-profession-color: rgba(100, 116, 139, 0.45);
+    border-color: color-mix(in srgb, var(--battle-profession-color) 68%, rgba(148, 163, 184, 0.3) 32%);
+    background:
+        radial-gradient(circle at 24% 16%, color-mix(in srgb, var(--battle-profession-color) 24%, rgba(255,255,255,0.05) 76%) 0%, transparent 44%),
+        linear-gradient(160deg, color-mix(in srgb, var(--battle-profession-color) 34%, #334155 66%), color-mix(in srgb, var(--battle-profession-color) 20%, #0f172a 80%));
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.28),
+        inset 0 -18px 24px rgba(2,6,23,0.64),
+        0 12px 24px rgba(2,6,23,0.5);
+    transition: box-shadow 220ms ease, filter 220ms ease, border-color 220ms ease, transform 220ms ease;
+}
+
+.battle-participant-card:hover {
+    filter: brightness(1.08);
+    border-color: color-mix(in srgb, var(--battle-profession-color) 88%, #ffffff 12%);
+    box-shadow:
+        inset 0 1px 0 rgba(255,255,255,0.4),
+        inset 0 -22px 30px rgba(2,6,23,0.75),
+        0 18px 32px rgba(2,6,23,0.58),
+        0 0 36px color-mix(in srgb, var(--battle-profession-color) 56%, transparent);
 }
