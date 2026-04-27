@@ -1162,7 +1162,6 @@
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
-            const [searchQuery, setSearchQuery] = useState('');
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [isCatModalOpen, setIsCatModalOpen] = useState(false);
             const [editingId, setEditingId] = useState(null);
@@ -1495,7 +1494,7 @@ const getInitialCatFormData = () => ({
                 if (window.lucide) {
                     window.lucide.createIcons();
                 }
-            }, [activeTab, isModalOpen, isCatModalOpen, perfiles, searchQuery, selectedCategory, filters, categorias]);
+            }, [activeTab, isModalOpen, isCatModalOpen, perfiles, selectedCategory, filters, categorias]);
 
             useEffect(() => {
                 if (galleryWindowRef.current && !galleryWindowRef.current.closed && editingId) {
@@ -1883,25 +1882,16 @@ const getInitialCatFormData = () => ({
                 }, {});
             }, [sourceGalleryPhotos]);
             const filteredGalleryPhotos = useMemo(() => {
-                const query = searchQuery.trim().toLowerCase();
-
-                return sourceGalleryPhotos.filter(photo => {
-                    const matchesLabel = galleryViewMode === 'ETIQUETA'
+                return sourceGalleryPhotos.filter(photo => (
+                    galleryViewMode === 'ETIQUETA'
                         ? true
                         : galleryFilterLabel === 'INICIAL'
                             ? photo.label !== 'X'
                             : galleryFilterLabel === '100'
                                 ? true
-                                : photo.label === galleryFilterLabel;
-                    const matchesQuery = !query
-                        || String(photo.nombre || '').toLowerCase().includes(query)
-                        || String(photo.profesion || '').toLowerCase().includes(query)
-                        || String(photo.nacionalidad || '').toLowerCase().includes(query)
-                        || String(photo.label || '').toLowerCase().includes(query);
-
-                    return matchesLabel && matchesQuery;
-                });
-            }, [sourceGalleryPhotos, galleryFilterLabel, searchQuery, galleryViewMode]);
+                                : photo.label === galleryFilterLabel
+                ));
+            }, [sourceGalleryPhotos, galleryFilterLabel, galleryViewMode]);
             const currentGalleryModeLabel = GALLERY_VIEW_MODE_LABELS[galleryViewMode] || galleryViewMode;
             const isGalleryBucketMode = galleryViewMode !== 'GENERAL' && galleryViewMode !== 'ETIQUETA';
             const availableCharacterBuckets = useMemo(() => {
@@ -3111,7 +3101,7 @@ const saveProfile = (e) => {
             };
 
             const filteredProfiles = useMemo(() => {
-                let base = perfiles.filter(p => String(p?.nombre || '').toLowerCase().includes(searchQuery.toLowerCase()));
+                const base = perfiles;
 
                 if (activeTab === 'RANKING') {
                     return base.filter(p => {
@@ -3147,7 +3137,7 @@ const saveProfile = (e) => {
                 }
 
                 return base;
-            }, [perfiles, searchQuery, activeTab, selectedCategory, filters]);
+            }, [perfiles, activeTab, selectedCategory, filters]);
             const battleScopeOptions = useMemo(() => {
                 if (!selectedBattleScope) return [];
                 return getBattleScopeOptions(perfiles, selectedBattleScope);
@@ -3360,18 +3350,6 @@ const saveProfile = (e) => {
                                 >
                                     <LucideIcon name={isSidebarOpen ? 'panel-left-close' : 'panel-left-open'} size={18} />
                                 </button>
-                                <div className="relative w-full">
-                                    <span className="absolute left-6 top-1/2 -translate-y-1/2 text-[var(--metal-gold)]/50">
-                                        <LucideIcon name="search" size={20} />
-                                    </span>
-                                    <input
-                                        type="text"
-                                        placeholder="Buscar por nombre..."
-                                        className="w-full theme-surface-soft py-4 pl-16 pr-8 rounded-full text-sm text-white outline-none focus:ring-2 focus:ring-[var(--glow-gold)] border theme-border-secondary"
-                                        value={searchQuery}
-                                        onChange={e => setSearchQuery(e.target.value)}
-                                    />
-                                </div>
                             </div>
                         </header>
 
@@ -3809,7 +3787,7 @@ const saveProfile = (e) => {
                             <p className="font-title text-xs font-medium text-slate-500 tracking-[0.06em] mt-3">
                                 {galleryViewMode === 'ETIQUETA' && selectedTagLabels.length === 0
                                     ? 'Seleccioná una o más etiquetas para ver multimedia.'
-                                    : 'Probá con otra búsqueda o quitá el filtro por etiqueta.'}
+                                    : 'Probá con otra etiqueta o quitá el filtro por etiqueta.'}
                             </p>
                         </div>
                     ) : (
