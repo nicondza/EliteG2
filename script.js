@@ -1161,22 +1161,70 @@ const getInitialCatFormData = () => ({
         umbral: ''
     }
 });
-        const [formData, setFormData] = useState({
+        const getEmptyProfileFormData = () => ({
                 nombre: '', nacionalidad: '', ciudad: '', profesion: '', fechaNacimiento: '', estaturaCm: '', fotos: [],
                 galeria: { fotos: [], gifs: [], videos: [] },
                 batallaFotosPreferidas: getDefaultBattlePhotoPreferences(),
                 puntuaciones: createZeroScores()
             });
-            const mapProfileToFormData = (profile = {}) => ({
-                ...profile,
-                galeria: {
-                    fotos: Array.isArray(profile?.galeria?.fotos) ? profile.galeria.fotos : [],
-                    gifs: Array.isArray(profile?.galeria?.gifs) ? profile.galeria.gifs : [],
-                    videos: Array.isArray(profile?.galeria?.videos) ? profile.galeria.videos : []
-                },
-                batallaFotosPreferidas: sanitizeBattlePhotoPreferences(profile?.batallaFotosPreferidas),
-                puntuaciones: profile?.puntuaciones ? { ...createZeroScores(), ...profile.puntuaciones } : createZeroScores()
-            });
+        const [formData, setFormData] = useState(getEmptyProfileFormData);
+            const mapProfileToFormData = (profile = {}) => {
+                const baseFormData = getEmptyProfileFormData();
+                const safeProfile = profile && typeof profile === 'object' ? profile : {};
+                const normalizedScores = safeProfile?.puntuaciones && typeof safeProfile.puntuaciones === 'object'
+                    ? { ...baseFormData.puntuaciones, ...safeProfile.puntuaciones }
+                    : baseFormData.puntuaciones;
+
+                return {
+                    ...safeProfile,
+                    ...baseFormData,
+                    nombre: typeof safeProfile.nombre === 'string' ? safeProfile.nombre : '',
+                    nacionalidad: typeof safeProfile.nacionalidad === 'string' ? safeProfile.nacionalidad : '',
+                    ciudad: typeof safeProfile.ciudad === 'string' ? safeProfile.ciudad : '',
+                    profesion: typeof safeProfile.profesion === 'string' ? safeProfile.profesion : '',
+                    fechaNacimiento: typeof safeProfile.fechaNacimiento === 'string' ? safeProfile.fechaNacimiento : '',
+                    estaturaCm: safeProfile.estaturaCm === undefined || safeProfile.estaturaCm === null ? '' : safeProfile.estaturaCm,
+                    fotos: Array.isArray(safeProfile.fotos) ? safeProfile.fotos : [],
+                    galeria: {
+                        fotos: Array.isArray(safeProfile?.galeria?.fotos) ? safeProfile.galeria.fotos : [],
+                        gifs: Array.isArray(safeProfile?.galeria?.gifs) ? safeProfile.galeria.gifs : [],
+                        videos: Array.isArray(safeProfile?.galeria?.videos) ? safeProfile.galeria.videos : []
+                    },
+                    batallaFotosPreferidas: sanitizeBattlePhotoPreferences(safeProfile?.batallaFotosPreferidas),
+                    puntuaciones: normalizedScores
+                };
+            };
+            const openProfileEditor = (contextProfile = {}) => {
+                setFormData(mapProfileToFormData(contextProfile));
+                setEditingId(contextProfile.firebaseId || contextProfile.id || null);
+                setIsModalOpen(true);
+            };
+            const profileCompletionRows = useMemo(() => {
+                const rows = [
+                    { key: 'nombre', label: 'Nombre', value: formData?.nombre },
+                    { key: 'fotos.0', label: 'Foto principal', value: formData?.fotos?.[0] },
+                    { key: 'profesion', label: 'Profesión', value: formData?.profesion },
+                    { key: 'nacionalidad', label: 'Nacionalidad', value: formData?.nacionalidad },
+                    { key: 'ciudad', label: 'Ciudad', value: formData?.ciudad },
+                    { key: 'fechaNacimiento', label: 'Fecha de nacimiento', value: formData?.fechaNacimiento },
+                    { key: 'estaturaCm', label: 'Estatura', value: formData?.estaturaCm }
+                ];
+
+                const withStatus = rows.map((row) => {
+                    const normalizedValue = typeof row.value === 'string' ? row.value.trim() : row.value;
+                    const isComplete = !(normalizedValue === '' || normalizedValue === undefined || normalizedValue === null);
+                    return {
+                        ...row,
+                        isComplete,
+                        preview: isComplete ? String(normalizedValue) : 'Sin completar'
+                    };
+                });
+
+                return {
+                    completed: withStatus.filter((row) => row.isComplete),
+                    missing: withStatus.filter((row) => !row.isComplete)
+                };
+            }, [formData]);
             const addGalleryImage = async ({ profileId, url, tag = 'fotos', label = '', type = 'image' }) => {
                 const normalizedUrl = (url || '').trim();
                 const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
@@ -2072,10 +2120,7 @@ const saveProfile = (e) => {
                     db.ref('perfiles').push(profileData)
                         .then(() => {
                             setIsModalOpen(false);
-                            setFormData({
-                                nombre: '', nacionalidad: '', ciudad: '', profesion: '', fechaNacimiento: '', estaturaCm: '', fotos: [],
-                                galeria: { fotos: [], gifs: [], videos: [] }, batallaFotosPreferidas: getDefaultBattlePhotoPreferences(), puntuaciones: createZeroScores()
-                            });
+                            setFormData(getEmptyProfileFormData());
                         })
                         .catch(err => console.error("No pudo entrar el perfil:", err));
                 }
@@ -2809,7 +2854,7 @@ const saveProfile = (e) => {
                         <button
                             onClick={() => {
                                 setEditingId(null);
-                                setFormData({nombre:'', nacionalidad:'', ciudad:'', profesion:'', fechaNacimiento:'', estaturaCm:'', fotos:[], galeria:{ fotos: [], gifs: [], videos: [] }, batallaFotosPreferidas:getDefaultBattlePhotoPreferences(), puntuaciones:createZeroScores()});
+                                setFormData(getEmptyProfileFormData());
                                 setIsModalOpen(true);
                             }}
                             className="btn-metal btn-metal--gold py-5 rounded-[2.2rem] text-[11px] flex items-center justify-center gap-2 flex-shrink-0"
@@ -3847,7 +3892,7 @@ const saveProfile = (e) => {
                 </thead>
                 <tbody>
                     {sortedProfiles.map((p, idx) => (
-<tr key={p.id} onClick={() => { setFormData(mapProfileToFormData(p)); setEditingId(p.id); setIsModalOpen(true); }}
+<tr key={p.firebaseId || p.id} onClick={() => openProfileEditor(p)}
     className={`cursor-pointer border-b border-slate-700/70 last:border-0 transition-all duration-300 group ${idx === 0 ? 'podium-1' : idx === 1 ? 'podium-2' : idx === 2 ? 'podium-3' : 'hover:bg-white/5'}`}>
 
     <td className="px-8 py-5">
@@ -4097,6 +4142,36 @@ const saveProfile = (e) => {
 
         {/* CAMPOS DE TEXTO */}
         <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-emerald-400/30 bg-emerald-950/20 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">Datos actuales</p>
+                    {profileCompletionRows.completed.length > 0 ? (
+                        <ul className="mt-3 space-y-1">
+                            {profileCompletionRows.completed.map((row) => (
+                                <li key={row.key} className="text-xs text-emerald-100/90">
+                                    <span className="font-black">{row.label}:</span> {row.preview}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-3 text-xs text-emerald-100/70">Todavía no hay datos cargados.</p>
+                    )}
+                </div>
+                <div className="rounded-2xl border border-amber-300/30 bg-amber-950/20 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Datos faltantes por completar</p>
+                    {profileCompletionRows.missing.length > 0 ? (
+                        <ul className="mt-3 space-y-1">
+                            {profileCompletionRows.missing.map((row) => (
+                                <li key={row.key} className="text-xs text-amber-100/90">
+                                    <span className="font-black">{row.label}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-3 text-xs text-amber-100/70">¡Perfil completo en esta sección!</p>
+                    )}
+                </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
                 <input required placeholder="Nombre Artístico" className="col-span-2 w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-bold" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
 
