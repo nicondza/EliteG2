@@ -322,6 +322,22 @@
             'Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento'
         ];
         const ARENAS = [...CARACTERISTICAS];
+        const BATTLE_SCOPES = [
+            { id: 'PROFESIONES', label: 'Profesiones', description: 'Compará perfiles por profesión.' },
+            { id: 'NACIONALIDADES', label: 'Nacionalidades', description: 'Compará perfiles por nacionalidad.' },
+            { id: 'EDADES', label: 'Edades', description: 'Compará perfiles por rango etario.' },
+            { id: 'GENERAL', label: 'General', description: 'Modo libre sin segmentación extra.' }
+        ];
+        const getBattleScopeLabel = (scopeId = '') => {
+            const scope = BATTLE_SCOPES.find((item) => item.id === scopeId);
+            return scope?.label || 'General';
+        };
+        const getArenaBattleKey = (arenaName, scopeId = 'GENERAL') => {
+            const safeArena = String(arenaName || '').trim();
+            const safeScope = String(scopeId || 'GENERAL').trim().toUpperCase();
+            if (!safeArena) return '';
+            return `${safeScope}::${safeArena}`;
+        };
         const createZeroScores = () => CARACTERISTICAS.reduce((acc, item) => {
             acc[item] = 0;
             return acc;
@@ -361,6 +377,15 @@
             if (lowP.includes('bailarina')) return '💃';
             if (lowP.includes('atleta')) return '🏋️‍♀️';
             return '📖';
+        };
+        const getProfessionCardVisual = (profession = '') => {
+            const normalizedProfession = String(profession || '').trim();
+            const config = PROFESIONES_CONFIG[normalizedProfession] || PROFESIONES_CONFIG.Otro;
+            const baseColor = String(config?.color || 'rgba(148, 163, 184, 0.8)')
+                .replace(/,\s*[\d.]+\)$/, ', 1)');
+            const glowColor = String(config?.color || 'rgba(148, 163, 184, 0.8)')
+                .replace(/,\s*[\d.]+\)$/, ', 0.75)');
+            return { baseColor, glowColor };
         };
 
         const HeraldicGlyph = ({ variant = 'sigil', size = 18, className = '', tint = 'currentColor' }) => {
@@ -1111,7 +1136,9 @@
             const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
             const [selectedArena, setSelectedArena] = useState(null);
+            const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [arenaBattleState, setArenaBattleState] = useState({});
+            const [arenaParticipantMode, setArenaParticipantMode] = useState('GENERAL');
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
@@ -1126,9 +1153,9 @@
             const [selectedCategory, setSelectedCategory] = React.useState(null);
             const [contextMenuOpen, setContextMenuOpen] = useState(false);
             const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
-            const [contextProfile, setContextProfile] = useState(null);
             const [sortBy, setSortBy] = useState('promedio');
             const [sortDirection, setSortDirection] = useState('desc');
+            const [scoreBreakdownModal, setScoreBreakdownModal] = useState({ isOpen: false, profile: null, category: null });
             const [urlInput, setUrlInput] = useState('');
             const [galleryLabel, setGalleryLabel] = useState(GALLERY_LABELS[0]);
             const [galleryMediaType, setGalleryMediaType] = useState('image');
@@ -2181,13 +2208,6 @@ const saveProfile = (e) => {
                 }
             };
 
-            const openProfileEditor = (profile) => {
-                if (!profile) return;
-                if (typeof setFormData === 'function') setFormData(mapProfileToFormData(profile));
-                if (typeof setEditingId === 'function') setEditingId(profile.firebaseId);
-                if (typeof setIsModalOpen === 'function') setIsModalOpen(true);
-            };
-
             const requestDeleteProfile = (profile) => {
                 if (!profile?.firebaseId) return;
                 setProfileActionError('');
@@ -2262,8 +2282,9 @@ const saveProfile = (e) => {
                     closeContextMenu();
                 }
             };
-            const getArenaStats = (arenaName, profileId) => {
-                const stats = arenaBattleState[arenaName]?.stats?.[profileId] || { wins: 0, battles: 0 };
+            const getArenaStats = (arenaName, profileId, scopeId = selectedBattleScope) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                const stats = arenaBattleState[arenaKey]?.stats?.[profileId] || { wins: 0, battles: 0 };
                 const score = stats.battles ? Math.round((stats.wins / stats.battles) * 100) : 0;
                 return { ...stats, score };
             };
@@ -2282,17 +2303,79 @@ const saveProfile = (e) => {
                 return `${Math.round(numericHeight)} cm`;
             };
 
-            const getPairKey = (profileAId, profileBId) => [profileAId, profileBId].sort().join('__');
-            const isMatchupResolved = (matchups = {}, pairKey = '') => {
-                if (!pairKey) return false;
-                return !!matchups[pairKey];
+            const normalizeGroupingValue = (value = '') => String(value || '').trim().toLowerCase();
+            const formatGroupingLabel = (value = '') => String(value || '').trim();
+            const buildArenaParticipants = (profiles = [], mode = 'GENERAL') => {
+                const baseProfiles = [...(profiles || [])]
+                    .filter((profile) => profile?.firebaseId && (profile?.nombre || '').trim())
+                    .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
+
+                if (mode === 'GENERAL') {
+                    const ids = baseProfiles.map((profile) => profile.firebaseId);
+                    return {
+                        groupedIds: ids.length > 1
+                            ? [{ key: 'general', label: 'General', typeLabel: 'General', ids }]
+                            : [],
+                        orderedIds: ids
+                    };
+                }
+
+                if (mode === 'EDADES') {
+                    const ageBuckets = {
+                        '18-28': { key: '18-28', label: '18–28', typeLabel: 'Edad', ids: [] },
+                        '29-39': { key: '29-39', label: '29–39', typeLabel: 'Edad', ids: [] },
+                        '40+': { key: '40+', label: '40+', typeLabel: 'Edad', ids: [] }
+                    };
+
+                    baseProfiles.forEach((profile) => {
+                        const age = calcularEdad(profile.fechaNacimiento);
+                        if (!Number.isFinite(age) || age < 18) return;
+                        if (age <= 28) ageBuckets['18-28'].ids.push(profile.firebaseId);
+                        else if (age <= 39) ageBuckets['29-39'].ids.push(profile.firebaseId);
+                        else ageBuckets['40+'].ids.push(profile.firebaseId);
+                    });
+
+                    const groupedIds = Object.values(ageBuckets)
+                        .filter((group) => group.ids.length >= 2);
+
+                    return {
+                        groupedIds,
+                        orderedIds: groupedIds.flatMap((group) => group.ids)
+                    };
+                }
+
+                const field = mode === 'NACIONALIDADES' ? 'nacionalidad' : 'profesion';
+                const typeLabel = mode === 'NACIONALIDADES' ? 'Nacionalidad' : 'Profesión';
+                const groupedMap = baseProfiles.reduce((acc, profile) => {
+                    const normalizedValue = normalizeGroupingValue(profile?.[field]);
+                    if (!normalizedValue) return acc;
+                    if (!acc[normalizedValue]) {
+                        acc[normalizedValue] = {
+                            key: normalizedValue,
+                            label: formatGroupingLabel(profile?.[field]) || normalizedValue,
+                            typeLabel,
+                            ids: []
+                        };
+                    }
+                    acc[normalizedValue].ids.push(profile.firebaseId);
+                    return acc;
+                }, {});
+
+                const groupedIds = Object.values(groupedMap)
+                    .filter((group) => group.ids.length >= 2)
+                    .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
+
+                return {
+                    groupedIds,
+                    orderedIds: groupedIds.flatMap((group) => group.ids)
+                };
             };
-            const normalizeMatchupRecord = (rawRecord, pairKey = '') => {
-                if (!rawRecord || rawRecord === true) {
-                    const [profileAId, profileBId] = String(pairKey).split('__');
-                    return (profileAId && profileBId)
-                        ? { winnerId: profileAId, loserId: profileBId, reason: 'direct' }
-                        : null;
+            const findNextPendingPairInGroup = (groupIds = [], playedMatchups = {}) => {
+                for (let i = 0; i < groupIds.length - 1; i++) {
+                    for (let j = i + 1; j < groupIds.length; j++) {
+                        const key = [groupIds[i], groupIds[j]].sort().join('__');
+                        if (!playedMatchups[key]) return [groupIds[i], groupIds[j]];
+                    }
                 }
                 if (typeof rawRecord !== 'object') return null;
 
@@ -2306,62 +2389,31 @@ const saveProfile = (e) => {
                     reason: rawRecord.reason === 'transitive' ? 'transitive' : 'direct'
                 };
             };
-            const getReachableLosers = (graph = {}, startId = '') => {
-                if (!startId) return [];
-                const visited = new Set();
-                const queue = [startId];
-
-                while (queue.length) {
-                    const currentId = queue.shift();
-                    const neighbors = Object.keys(graph?.[currentId] || {});
-                    neighbors.forEach((neighborId) => {
-                        if (neighborId === startId || visited.has(neighborId)) return;
-                        visited.add(neighborId);
-                        queue.push(neighborId);
-                    });
+            const findNextPendingPairByGroups = (groupedIds = [], playedMatchups = {}) => {
+                for (const group of groupedIds) {
+                    const nextPair = findNextPendingPairInGroup(group?.ids || [], playedMatchups);
+                    if (nextPair) return nextPair;
                 }
-
-                return [...visited];
+                return null;
             };
-            const buildArenaDerivedState = (directMatchups = {}, orderedIds = []) => {
-                const nextDirectMatchups = {};
-                const nextMatchups = {};
-                const nextVictoryGraph = {};
+            const getGroupForPair = (groupedIds = [], profileAId, profileBId = '') => {
+                if (!profileAId) return null;
+                return groupedIds.find((group) => {
+                    const ids = group?.ids || [];
+                    if (!ids.includes(profileAId)) return false;
+                    return !profileBId || ids.includes(profileBId);
+                }) || null;
+            };
 
-                orderedIds.forEach((profileId) => {
-                    if (!profileId) return;
-                    nextVictoryGraph[profileId] = {};
-                });
-
-                Object.entries(directMatchups || {}).forEach(([pairKey, rawRecord]) => {
-                    const normalizedRecord = normalizeMatchupRecord(rawRecord, pairKey);
-                    if (!normalizedRecord) return;
-                    const { winnerId, loserId } = normalizedRecord;
-                    const normalizedPairKey = getPairKey(winnerId, loserId);
-                    if (!winnerId || !loserId) return;
-                    nextDirectMatchups[normalizedPairKey] = { winnerId, loserId, reason: 'direct' };
-                    nextMatchups[normalizedPairKey] = { winnerId, loserId, reason: 'direct' };
-                    nextVictoryGraph[winnerId] = { ...(nextVictoryGraph[winnerId] || {}), [loserId]: true };
-                });
-
-                const directPairs = Object.values(nextDirectMatchups);
-                directPairs.forEach(({ winnerId, loserId }) => {
-                    const inheritedLosers = getReachableLosers(nextVictoryGraph, loserId);
-                    inheritedLosers.forEach((inheritedLoserId) => {
-                        if (!inheritedLoserId || inheritedLoserId === winnerId) return;
-                        const inheritedPairKey = getPairKey(winnerId, inheritedLoserId);
-                        if (nextMatchups[inheritedPairKey]) return;
-                        nextMatchups[inheritedPairKey] = {
-                            winnerId,
-                            loserId: inheritedLoserId,
-                            reason: 'transitive'
-                        };
-                        nextVictoryGraph[winnerId] = {
-                            ...(nextVictoryGraph[winnerId] || {}),
-                            [inheritedLoserId]: true
-                        };
-                    });
-                });
+            const rebuildArenaStatsFromMatchups = (matchups = {}) => {
+                return Object.keys(matchups || {}).reduce((acc, key) => {
+                    const matchupValue = matchups[key];
+                    if (!matchupValue) return acc;
+                    const [profileAId, profileBId] = String(key).split('__');
+                    if (!profileAId || !profileBId) return acc;
+                    const prevA = acc[profileAId] || { wins: 0, battles: 0 };
+                    const prevB = acc[profileBId] || { wins: 0, battles: 0 };
+                    const winnerId = matchupValue?.winnerId;
 
                 const nextStats = Object.values(nextMatchups).reduce((acc, matchupRecord) => {
                     const normalizedRecord = normalizeMatchupRecord(matchupRecord);
@@ -2371,8 +2423,14 @@ const saveProfile = (e) => {
                     const loserPrev = acc[loserId] || { wins: 0, battles: 0 };
                     return {
                         ...acc,
-                        [winnerId]: { wins: winnerPrev.wins + 1, battles: winnerPrev.battles + 1 },
-                        [loserId]: { wins: loserPrev.wins, battles: loserPrev.battles + 1 }
+                        [profileAId]: {
+                            wins: prevA.wins + (winnerId === profileAId ? 1 : 0),
+                            battles: prevA.battles + 1
+                        },
+                        [profileBId]: {
+                            wins: prevB.wins + (winnerId === profileBId ? 1 : 0),
+                            battles: prevB.battles + 1
+                        }
                     };
                 }, {});
 
@@ -2398,51 +2456,33 @@ const saveProfile = (e) => {
 
             const normalizeArenaState = (arenaState) => {
                 if (!arenaState) return null;
-
-                const profileIds = new Set(
-                    (perfiles || [])
-                        .filter(p => p?.firebaseId && (p?.nombre || '').trim())
-                        .map(p => p.firebaseId)
-                );
-                const orderedIds = (arenaState.orderedIds || []).filter(id => profileIds.has(id));
-                const orderedIdsWithFallback = orderedIds.length
-                    ? orderedIds
-                    : [...profileIds];
-                const legacyDirectMatchups = Object.keys(arenaState.matchups || {}).reduce((acc, key) => {
-                    const normalizedRecord = normalizeMatchupRecord(arenaState.matchups[key], key);
-                    if (!normalizedRecord) return acc;
-                    const normalizedPairKey = getPairKey(normalizedRecord.winnerId, normalizedRecord.loserId);
-                    acc[normalizedPairKey] = { ...normalizedRecord, reason: 'direct' };
-                    return acc;
-                }, {});
-                const directMatchupsSource = Object.keys(arenaState.directMatchups || {}).length
-                    ? arenaState.directMatchups
-                    : legacyDirectMatchups;
-                const {
-                    directMatchups,
-                    matchups,
-                    victoryGraph,
-                    stats
-                } = buildArenaDerivedState(directMatchupsSource, orderedIdsWithFallback);
+                const mode = ARENA_PARTICIPANT_MODES.includes(arenaState.mode) ? arenaState.mode : 'GENERAL';
+                const participants = buildArenaParticipants(perfiles, mode);
+                const groupedIds = participants.groupedIds || [];
+                const orderedIds = participants.orderedIds || [];
+                const stats = arenaState.stats || {};
+                const matchups = arenaState.matchups || {};
                 const currentChampionId = arenaState.championId;
                 const currentChallengerId = arenaState.challengerId;
+                const currentGroup = getGroupForPair(groupedIds, currentChampionId, currentChallengerId);
                 const currentPairIsValid = (
                     !!currentChampionId &&
                     !!currentChallengerId &&
                     currentChampionId !== currentChallengerId &&
-                    orderedIds.includes(currentChampionId) &&
-                    orderedIds.includes(currentChallengerId) &&
-                    !isMatchupResolved(matchups, getPairKey(currentChampionId, currentChallengerId))
+                    !!currentGroup &&
+                    !matchups[[currentChampionId, currentChallengerId].sort().join('__')]
                 );
-
-                const nextPendingPair = orderedIds.length > 1 ? findNextPendingPair(orderedIds, matchups) : null;
+                const nextPendingPair = groupedIds.length ? findNextPendingPairByGroups(groupedIds, matchups) : null;
                 const nextPair = currentPairIsValid
                     ? [currentChampionId, currentChallengerId]
                     : nextPendingPair;
                 const isFinished = !nextPendingPair;
+                const activeGroup = getGroupForPair(groupedIds, nextPair?.[0], nextPair?.[1]);
 
                 return {
                     ...arenaState,
+                    mode,
+                    groupedIds,
                     orderedIds,
                     stats,
                     directMatchups,
@@ -2450,6 +2490,8 @@ const saveProfile = (e) => {
                     victoryGraph,
                     championId: nextPair ? nextPair[0] : null,
                     challengerId: nextPair ? nextPair[1] : null,
+                    activeGroupKey: activeGroup?.key || null,
+                    activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
                     isFinished
                 };
             };
@@ -2460,16 +2502,16 @@ const saveProfile = (e) => {
                 const repairedStates = {};
                 const updates = [];
 
-                Object.entries(arenaBattleState || {}).forEach(([arenaName, state]) => {
+                Object.entries(arenaBattleState || {}).forEach(([arenaKey, state]) => {
                     const normalized = normalizeArenaState(state);
                     if (!normalized) return;
 
                     const hasChanged = JSON.stringify(state) !== JSON.stringify(normalized);
                     if (!hasChanged) return;
 
-                    repairedStates[arenaName] = normalized;
+                    repairedStates[arenaKey] = normalized;
                     updates.push(
-                        db.ref(`arenaBattleState/${arenaName}`).set(normalized)
+                        db.ref(`arenaBattleState/${arenaKey}`).set(normalized)
                             .catch(error => console.error('No se pudo normalizar el estado del arena:', error))
                     );
                 });
@@ -2484,7 +2526,7 @@ const saveProfile = (e) => {
                 Promise.all(updates).catch(() => {});
             }, [arenaBattleState, perfiles]);
 
-            const initArenaBattle = (arenaName) => {
+            const initArenaBattle = (arenaName, scopeId = selectedBattleScope) => {
                 const orderedProfiles = [...perfiles]
                     .filter(p => p?.firebaseId && (p?.nombre || '').trim())
                     .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
@@ -2492,12 +2534,14 @@ const saveProfile = (e) => {
                 if (orderedProfiles.length < 2) return;
 
                 const orderedIds = orderedProfiles.map(p => p.firebaseId);
-                const derivedState = buildArenaDerivedState({}, orderedIds);
-                const matchups = derivedState.matchups;
-                const initialPair = findNextPendingPair(orderedIds, matchups);
+                const matchups = {};
+                const initialPair = findNextPendingPairByGroups(groupedIds, matchups);
                 if (!initialPair) return;
+                const activeGroup = getGroupForPair(groupedIds, initialPair[0], initialPair[1]);
 
                 const nextArenaState = {
+                    mode: arenaParticipantMode,
+                    groupedIds,
                     orderedIds,
                     stats: derivedState.stats,
                     directMatchups: derivedState.directMatchups,
@@ -2505,15 +2549,19 @@ const saveProfile = (e) => {
                     victoryGraph: derivedState.victoryGraph,
                     championId: initialPair[0],
                     challengerId: initialPair[1],
+                    activeGroupKey: activeGroup?.key || null,
+                    activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
                     isFinished: false
                 };
+                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                if (!arenaKey) return;
 
                 setArenaBattleState(prev => ({
                     ...prev,
-                    [arenaName]: nextArenaState
+                    [arenaKey]: nextArenaState
                 }));
 
-                db.ref(`arenaBattleState/${arenaName}`).set(nextArenaState)
+                db.ref(`arenaBattleState/${arenaKey}`).set(nextArenaState)
                     .catch(error => console.error('No se pudo guardar el estado del arena:', error));
             };
 
@@ -2526,26 +2574,35 @@ const saveProfile = (e) => {
                 }
             };
 
-            const registerBattleWinner = (arenaName, winnerId) => {
-                const state = arenaBattleState[arenaName];
+            const registerBattleWinner = (arenaName, winnerId, scopeId = selectedBattleScope) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                const state = arenaBattleState[arenaKey];
                 if (!state || state.isFinished) return;
 
-                const {
-                    orderedIds = [],
-                    championId,
-                    challengerId,
-                    directMatchups = {},
-                    matchups = {}
-                } = state;
+                const groupedIds = Array.isArray(state.groupedIds) && state.groupedIds.length
+                    ? state.groupedIds
+                    : buildArenaParticipants(perfiles, state.mode || 'GENERAL').groupedIds;
+                const { championId, challengerId, matchups = {}, stats = {} } = state;
                 if (winnerId !== championId && winnerId !== challengerId) return;
                 const loserId = winnerId === championId ? challengerId : championId;
                 if (!winnerId || !loserId) return;
 
-                const pairKey = getPairKey(winnerId, loserId);
-                if (isMatchupResolved(matchups, pairKey)) return;
-                const updatedDirectMatchups = {
-                    ...directMatchups,
-                    [pairKey]: { winnerId, loserId, reason: 'direct' }
+                const pairKey = [winnerId, loserId].sort().join('__');
+                const updatedMatchups = {
+                    ...matchups,
+                    [pairKey]: {
+                        winnerId,
+                        loserId,
+                        playedAt: Date.now()
+                    }
+                };
+
+                const prevWinner = stats[winnerId] || { wins: 0, battles: 0 };
+                const prevLoser = stats[loserId] || { wins: 0, battles: 0 };
+                const updatedStats = {
+                    ...stats,
+                    [winnerId]: { wins: prevWinner.wins + 1, battles: prevWinner.battles + 1 },
+                    [loserId]: { wins: prevLoser.wins, battles: prevLoser.battles + 1 }
                 };
                 const derivedState = buildArenaDerivedState(updatedDirectMatchups, orderedIds);
                 const updatedMatchups = derivedState.matchups;
@@ -2577,6 +2634,7 @@ const saveProfile = (e) => {
                     updateProfileArenaScore(profileId, arenaName, nextScore);
                 });
 
+                const winnerGroup = getGroupForPair(groupedIds, winnerId, loserId);
                 const findNextOpponentForWinner = (ids, currentWinnerId, playedMatchups) => {
                     if (!currentWinnerId) return null;
 
@@ -2590,41 +2648,31 @@ const saveProfile = (e) => {
 
                     return null;
                 };
-
-                const findNextPendingPair = (ids, playedMatchups) => {
-                    for (let i = 0; i < ids.length - 1; i++) {
-                        for (let j = i + 1; j < ids.length; j++) {
-                            const key = getPairKey(ids[i], ids[j]);
-                            if (!isMatchupResolved(playedMatchups, key)) {
-                                return [ids[i], ids[j]];
-                            }
-                        }
-                    }
-                    return null;
-                };
-
-                const winnerNextOpponentId = findNextOpponentForWinner(orderedIds, winnerId, updatedMatchups);
+                const winnerNextOpponentId = findNextOpponentForWinner(winnerGroup?.ids || [], winnerId, updatedMatchups);
                 const nextPair = winnerNextOpponentId
                     ? [winnerId, winnerNextOpponentId]
-                    : findNextPendingPair(orderedIds, updatedMatchups);
+                    : findNextPendingPairByGroups(groupedIds, updatedMatchups);
+                const activeGroup = getGroupForPair(groupedIds, nextPair?.[0], nextPair?.[1]);
 
                 const nextArenaState = {
                     ...state,
-                    directMatchups: derivedState.directMatchups,
+                    groupedIds,
                     stats: updatedStats,
                     matchups: updatedMatchups,
                     victoryGraph: derivedState.victoryGraph,
                     championId: nextPair ? nextPair[0] : null,
                     challengerId: nextPair ? nextPair[1] : null,
+                    activeGroupKey: activeGroup?.key || null,
+                    activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
                     isFinished: !nextPair
                 };
 
                 setArenaBattleState(prev => ({
                     ...prev,
-                    [arenaName]: nextArenaState
+                    [arenaKey]: nextArenaState
                 }));
 
-                db.ref(`arenaBattleState/${arenaName}`).set(nextArenaState)
+                db.ref(`arenaBattleState/${arenaKey}`).set(nextArenaState)
                     .catch(error => console.error('No se pudo guardar avance de batallas:', error));
             };
 
@@ -2651,7 +2699,7 @@ const saveProfile = (e) => {
                 }
             };
 
-            const resetArenaScores = async (arenaName) => {
+            const resetArenaScores = async (arenaName, scopeId = selectedBattleScope) => {
                 if (!arenaName) {
                     alert('Seleccioná un item para resetear.');
                     return;
@@ -2674,23 +2722,25 @@ const saveProfile = (e) => {
                         }
                     })));
 
+                    const arenaKey = getArenaBattleKey(arenaName, scopeId);
                     setArenaBattleState((prev) => {
-                        if (!prev?.[arenaName]) return prev;
+                        if (!prev?.[arenaKey]) return prev;
                         const next = { ...prev };
-                        delete next[arenaName];
+                        delete next[arenaKey];
                         return next;
                     });
 
-                    await db.ref(`arenaBattleState/${arenaName}`).remove();
-                    alert(`Se reseteó "${arenaName}" y se limpió su estado de batallas.`);
+                    await db.ref(`arenaBattleState/${arenaKey}`).remove();
+                    alert(`Se reseteó "${arenaName}" (${getBattleScopeLabel(scopeId)}) y se limpió su estado de batallas.`);
                 } catch (error) {
                     console.error('No se pudo resetear el item:', error);
                     alert('No se pudo resetear ese item.');
                 }
             };
 
-            const resetSpecificBattle = async (arenaName, profileAId, profileBId) => {
-                const arenaState = arenaBattleState?.[arenaName];
+            const resetSpecificBattle = async (arenaName, profileAId, profileBId, scopeId = selectedBattleScope) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                const arenaState = arenaBattleState?.[arenaKey];
                 if (!arenaState) {
                     alert('Esa arena no tiene estado cargado.');
                     return;
@@ -2738,10 +2788,10 @@ const saveProfile = (e) => {
 
                     setArenaBattleState((prev) => ({
                         ...prev,
-                        [arenaName]: normalizedState
+                        [arenaKey]: normalizedState
                     }));
 
-                    await db.ref(`arenaBattleState/${arenaName}`).set(normalizedState);
+                    await db.ref(`arenaBattleState/${arenaKey}`).set(normalizedState);
 
                     const affectedIds = new Set([
                         ...Object.keys(arenaState.stats || {}),
@@ -2844,6 +2894,49 @@ const saveProfile = (e) => {
                 }
                 setSortBy(key);
                 setSortDirection(defaultDirection);
+            };
+
+            const SCORE_GROUP_TO_ARENAS = {
+                Rostro: ['Rostro', 'Ojos', 'Boca', 'Cabello'],
+                Cuerpo: ['Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura'],
+                Actitud: ['Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento']
+            };
+
+            const getScoreBreakdownByCategory = (profileId, categoryKey) => {
+                const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
+                const winIds = new Set();
+                const lossIds = new Set();
+
+                arenaNames.forEach((arenaName) => {
+                    const arenaMatchups = arenaBattleState?.[arenaName]?.matchups || {};
+                    Object.values(arenaMatchups).forEach((match) => {
+                        if (!match || typeof match !== 'object') return;
+                        if (match.winnerId === profileId && match.loserId) {
+                            winIds.add(match.loserId);
+                        }
+                        if (match.loserId === profileId && match.winnerId) {
+                            lossIds.add(match.winnerId);
+                        }
+                    });
+                });
+
+                const profileNameById = new Map(
+                    (perfiles || [])
+                        .filter((profile) => profile?.firebaseId)
+                        .map((profile) => [profile.firebaseId, profile.nombre || 'Sin nombre'])
+                );
+
+                const getSortedNames = (idsSet) => (
+                    [...idsSet]
+                        .map((id) => profileNameById.get(id))
+                        .filter(Boolean)
+                        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+                );
+
+                return {
+                    wins: getSortedNames(winIds),
+                    losses: getSortedNames(lossIds)
+                };
             };
 
             const sortedProfiles = [...filteredProfiles].sort((a, b) => {
@@ -3014,18 +3107,30 @@ const saveProfile = (e) => {
                                         .filter(Boolean)
                                 )].map(prof => {
                                     const count = (perfiles || []).filter(p => String(p?.profesion || '').trim() === prof).length;
+                                    const visualStyle = getProfessionCardVisual(prof);
 
                                     return (
                                         <div
                                             key={prof}
                                             onClick={() => setSelectedCategory(prof)}
-                                            className="theme-surface-card rounded-2xl border theme-border-secondary p-8 text-center cursor-pointer hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] hover:border-[color:color-mix(in_srgb,var(--metal-gold)_50%,transparent)] transition-all group relative overflow-hidden active:scale-95"
+                                            className="profession-folder-card rounded-2xl p-8 text-center cursor-pointer transition-all group relative overflow-hidden active:scale-95"
+                                            style={{
+                                                '--folder-color': visualStyle.baseColor,
+                                                '--folder-glow': visualStyle.glowColor
+                                            }}
                                         >
-                                            <div className="w-24 h-24 bg-slate-900 rounded-[2rem] flex items-center justify-center text-5xl mx-auto mb-6 shadow-2xl border theme-border-secondary group-hover:scale-110 group-hover:border-cyan-500 transition-all duration-500">
+                                            <div className="profession-folder-card__icon w-24 h-24 rounded-[2rem] flex items-center justify-center text-5xl mx-auto mb-6">
                                                 {getEmoji(prof)}
                                             </div>
                                             <h3 className="text-2xl font-black text-white mb-2 truncate uppercase tracking-tighter italic">{prof}</h3>
-                                            <div className="inline-flex items-center gap-2 bg-[var(--metal-bronze)]/10 px-5 py-2 rounded-full border border-cyan-500/20">
+                                            <div
+                                                className="inline-flex items-center gap-2 px-5 py-2 rounded-full border"
+                                                style={{
+                                                    borderColor: 'color-mix(in srgb, var(--folder-color) 65%, rgba(2,6,23,0.8) 35%)',
+                                                    background: 'color-mix(in srgb, var(--folder-color) 14%, rgba(2,6,23,0.68) 86%)',
+                                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16), 0 0 14px color-mix(in srgb, var(--folder-glow) 35%, transparent)'
+                                                }}
+                                            >
                                                 <span className="text-[10px] font-black uppercase text-[var(--metal-gold)] tracking-widest">{count} {count === 1 ? 'Perfil' : 'Perfiles'}</span>
                                             </div>
                                         </div>
@@ -3790,8 +3895,9 @@ const saveProfile = (e) => {
                             ))}
                         </select>
                         <button
-                            onClick={() => resetArenaScores(resetArenaTarget)}
+                            onClick={() => resetArenaScores(resetArenaTarget, selectedBattleScope)}
                             className="bg-red-500/20 text-red-300 border border-red-400/40 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] hover:bg-red-500 hover:text-white transition-all"
+                            disabled={!selectedBattleScope}
                         >
                             Confirmar reset item
                         </button>
@@ -3799,34 +3905,71 @@ const saveProfile = (e) => {
                 )}
                 <div>
                     <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Arenas</h2>
-                    <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Elegí uno de los 15 ítems para iniciar las batallas</p>
+                    <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">
+                        {!selectedBattleScope
+                            ? 'Paso 1: elegí un modo de enfrentamiento'
+                            : `Paso 2: elegí uno de los 15 ítems · Modo: ${getBattleScopeLabel(selectedBattleScope)}`}
+                    </p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                {ARENAS.map((arenaName) => (
+            {!selectedBattleScope && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                    {BATTLE_SCOPES.map((scope) => (
+                        <button
+                            key={scope.id}
+                            onClick={() => setSelectedBattleScope(scope.id)}
+                            className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
+                        >
+                            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Modo</p>
+                            <h3 className="text-2xl font-black italic text-white mt-2">{scope.label}</h3>
+                            <p className="text-xs text-slate-300 mt-2">{scope.description}</p>
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {selectedBattleScope && (
+                <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-300">
+                            Modo: {getBattleScopeLabel(selectedBattleScope)}
+                        </p>
+                        <button
+                            onClick={() => setSelectedBattleScope(null)}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border theme-border-secondary text-[10px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] transition-all"
+                        >
+                            Cambiar modo
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {ARENAS.map((arenaName) => (
                     <button
                         key={arenaName}
                         onClick={() => {
                             setSelectedArena(arenaName);
-                            if (!arenaBattleState[arenaName]) initArenaBattle(arenaName);
+                            const arenaKey = getArenaBattleKey(arenaName, selectedBattleScope);
+                            if (!arenaBattleState[arenaKey]) initArenaBattle(arenaName, selectedBattleScope);
                         }}
                         className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
                     >
                         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Item</p>
                         <h3 className="text-2xl font-black italic text-white mt-2">{arenaName}</h3>
                     </button>
-                ))}
-            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     )}
 
     {activeTab === 'BATALLAS' && selectedArena && (() => {
-        const arenaState = arenaBattleState[selectedArena];
+        const arenaKey = getArenaBattleKey(selectedArena, selectedBattleScope);
+        const arenaState = arenaBattleState[arenaKey];
         const champion = perfiles.find(p => p.firebaseId === arenaState?.championId);
         const challenger = perfiles.find(p => p.firebaseId === arenaState?.challengerId);
-        const championStats = champion ? getArenaStats(selectedArena, champion.firebaseId) : null;
-        const challengerStats = challenger ? getArenaStats(selectedArena, challenger.firebaseId) : null;
+        const championStats = champion ? getArenaStats(selectedArena, champion.firebaseId, selectedBattleScope) : null;
+        const challengerStats = challenger ? getArenaStats(selectedArena, challenger.firebaseId, selectedBattleScope) : null;
 
         return (
             <div className="space-y-8 animate-in fade-in duration-500">
@@ -3838,6 +3981,16 @@ const saveProfile = (e) => {
                         >
                             <i data-lucide="arrow-left" className="w-4 h-4"></i>
                             Volver a arenas
+                        </button>
+                        <button
+                            onClick={() => {
+                                setSelectedArena(null);
+                                setSelectedBattleScope(null);
+                            }}
+                            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                        >
+                            <i data-lucide="refresh-ccw" className="w-4 h-4"></i>
+                            Cambiar modo
                         </button>
                         <button
                             onClick={() => setActiveTab('EXPLORAR')}
@@ -3874,7 +4027,7 @@ const saveProfile = (e) => {
                                             return (
                                                 <button
                                                     key={pairKey}
-                                                    onClick={() => resetSpecificBattle(selectedArena, profileAId, profileBId)}
+                                                    onClick={() => resetSpecificBattle(selectedArena, profileAId, profileBId, selectedBattleScope)}
                                                     className="w-full text-left px-3 py-2 rounded-xl border theme-border-secondary bg-slate-900/60 hover:border-red-300/70 transition-all"
                                                 >
                                                     <span className="text-xs text-white font-semibold">{labelA} vs {labelB}</span>
@@ -3891,8 +4044,13 @@ const saveProfile = (e) => {
                             {selectedArena}
                         </h2>
                         <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-400 mt-1">
-                            Arena activa
+                            Arena activa · Modo: {getBattleScopeLabel(selectedBattleScope)}
                         </p>
+                        {arenaState?.activeGroupLabel && (
+                            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.18em] text-[var(--metal-gold)] mt-2">
+                                {arenaState.activeGroupLabel}
+                            </p>
+                        )}
                     </div>
                 </div>
 
@@ -3900,7 +4058,7 @@ const saveProfile = (e) => {
                     <div className="theme-surface-card border theme-border-secondary rounded-2xl p-8 text-center">
                         <p className="text-sm text-slate-300">Presioná para iniciar esta arena.</p>
                         <button
-                            onClick={() => initArenaBattle(selectedArena)}
+                            onClick={() => initArenaBattle(selectedArena, selectedBattleScope)}
                             className="mt-4 bg-[var(--metal-bronze)] text-white px-5 py-3 rounded-xl font-black uppercase text-xs tracking-[0.2em]"
                         >
                             Iniciar batallas
@@ -3918,7 +4076,7 @@ const saveProfile = (e) => {
                 {arenaState && champion && challenger && !arenaState.isFinished && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
                         <button
-                            onClick={() => registerBattleWinner(selectedArena, champion.firebaseId)}
+                            onClick={() => registerBattleWinner(selectedArena, champion.firebaseId, selectedBattleScope)}
                             className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
                         >
                             <img
@@ -3946,7 +4104,7 @@ const saveProfile = (e) => {
                         </div>
 
                         <button
-                            onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId)}
+                            onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId, selectedBattleScope)}
                             className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
                         >
                             <img
@@ -3985,9 +4143,33 @@ const saveProfile = (e) => {
                                 Perfil {sortBy === 'nombre' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
                             </button>
                         </th>
-                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Rostro</th>
-                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Cuerpo</th>
-                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Actitud</th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('Rostro', 'desc')}
+                                className="inline-flex items-center justify-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Rostro {sortBy === 'Rostro' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('Cuerpo', 'desc')}
+                                className="inline-flex items-center justify-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Cuerpo {sortBy === 'Cuerpo' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('Actitud', 'desc')}
+                                className="inline-flex items-center justify-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Actitud {sortBy === 'Actitud' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
                         <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
                             <button
                                 type="button"
@@ -4061,19 +4243,43 @@ const saveProfile = (e) => {
 
 {/* Promedios por Categoría */}
 <td className="px-4 py-5 text-center">
-    <span className="text-xs font-bold text-slate-300">
+    <button
+        type="button"
+        onClick={(event) => {
+            event.stopPropagation();
+            setScoreBreakdownModal({ isOpen: true, profile: p, category: 'Rostro' });
+        }}
+        className="text-xs font-bold text-slate-300 hover:text-emerald-300 transition-colors"
+        title={`Ver detalle de batallas en Rostro de ${p.nombre}`}
+    >
         {getRostroScore(p).toFixed(0)}
-    </span>
+    </button>
 </td>
 <td className="px-4 py-5 text-center">
-    <span className="text-xs font-bold text-slate-300">
+    <button
+        type="button"
+        onClick={(event) => {
+            event.stopPropagation();
+            setScoreBreakdownModal({ isOpen: true, profile: p, category: 'Cuerpo' });
+        }}
+        className="text-xs font-bold text-slate-300 hover:text-emerald-300 transition-colors"
+        title={`Ver detalle de batallas en Cuerpo de ${p.nombre}`}
+    >
         {getCuerpoScore(p).toFixed(0)}
-    </span>
+    </button>
 </td>
 <td className="px-4 py-5 text-center">
-    <span className="text-xs font-bold text-slate-300">
+    <button
+        type="button"
+        onClick={(event) => {
+            event.stopPropagation();
+            setScoreBreakdownModal({ isOpen: true, profile: p, category: 'Actitud' });
+        }}
+        className="text-xs font-bold text-slate-300 hover:text-emerald-300 transition-colors"
+        title={`Ver detalle de batallas en Actitud de ${p.nombre}`}
+    >
         {getActitudScore(p).toFixed(0)}
-    </span>
+    </button>
 </td>
 
 {/* Ubicación (País y Ciudad) */}
@@ -4098,6 +4304,67 @@ const saveProfile = (e) => {
                     ))}
                 </tbody>
             </table>
+
+            {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
+                const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
+                return (
+                    <div
+                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                    >
+                        <div
+                            className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex items-start justify-between gap-4 mb-6">
+                                <div>
+                                    <h3 className="font-title text-xl font-black text-white tracking-wide">
+                                        {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
+                                    </h3>
+                                    <p className="text-xs text-slate-300 mt-1">
+                                        Detalle de enfrentamientos ganados y perdidos.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                                    className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
+                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
+                                    {breakdown.wins.length ? (
+                                        <ul className="space-y-2">
+                                            {breakdown.wins.map((name, idx) => (
+                                                <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
+                                    )}
+                                </div>
+
+                                <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
+                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
+                                    {breakdown.losses.length ? (
+                                        <ul className="space-y-2">
+                                            {breakdown.losses.map((name, idx) => (
+                                                <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     )}
 
