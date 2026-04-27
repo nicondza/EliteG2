@@ -218,34 +218,44 @@
         const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
         const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
         const getGalleryItemType = (item) => normalizeGalleryItem(item).type;
-        const checkImageUrlIsBroken = (url = '', timeoutMs = 7000) => new Promise((resolve) => {
+        const checkImageUrlIsBroken = async (url = '', {
+            timeoutMs = 12000,
+            retries = 1
+        } = {}) => {
             const normalizedUrl = String(url || '').trim();
-            if (!normalizedUrl) {
-                resolve(true);
-                return;
+            if (!normalizedUrl) return true;
+
+            const runSingleCheck = () => new Promise((resolve) => {
+                const image = new Image();
+                let settled = false;
+                const finalize = (isBroken) => {
+                    if (settled) return;
+                    settled = true;
+                    image.onload = null;
+                    image.onerror = null;
+                    resolve(Boolean(isBroken));
+                };
+
+                const timeoutId = window.setTimeout(() => finalize(true), timeoutMs);
+                image.onload = () => {
+                    clearTimeout(timeoutId);
+                    const hasPixels = Number(image.naturalWidth) > 0 && Number(image.naturalHeight) > 0;
+                    finalize(!hasPixels);
+                };
+                image.onerror = () => {
+                    clearTimeout(timeoutId);
+                    finalize(true);
+                };
+                image.src = normalizedUrl;
+            });
+
+            for (let attempt = 0; attempt <= retries; attempt += 1) {
+                const isBroken = await runSingleCheck();
+                if (!isBroken) return false;
             }
 
-            const image = new Image();
-            let settled = false;
-            const finalize = (isBroken) => {
-                if (settled) return;
-                settled = true;
-                image.onload = null;
-                image.onerror = null;
-                resolve(Boolean(isBroken));
-            };
-
-            const timeoutId = window.setTimeout(() => finalize(true), timeoutMs);
-            image.onload = () => {
-                clearTimeout(timeoutId);
-                finalize(false);
-            };
-            image.onerror = () => {
-                clearTimeout(timeoutId);
-                finalize(true);
-            };
-            image.src = normalizedUrl;
-        });
+            return true;
+        };
         const getBattlePhotoForArena = (profile, arenaName) => {
             const normalizedArena = (arenaName || '').trim().toLowerCase();
             const galleryImages = Array.isArray(profile?.galeria?.fotos)
@@ -1081,6 +1091,7 @@
         const App = () => {
             const [carpetaAbierta, setCarpetaAbierta] = React.useState(null);
             const galleryWindowRef = useRef(null);
+            const contextMenuRef = useRef(null);
             const [perfiles, setPerfiles] = useState([]);
                 const neonColors = {
         "CANTANTE": { color: "#0ea5e9", sombra: "rgba(14,165,233,0.8)" },    // Celeste
@@ -1113,6 +1124,9 @@
             const [isDeleteProfileModalOpen, setIsDeleteProfileModalOpen] = useState(false);
             const [profileActionError, setProfileActionError] = useState('');
             const [selectedCategory, setSelectedCategory] = React.useState(null);
+            const [contextMenuOpen, setContextMenuOpen] = useState(false);
+            const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+            const [contextProfile, setContextProfile] = useState(null);
             const [sortBy, setSortBy] = useState('promedio');
             const [sortDirection, setSortDirection] = useState('desc');
             const [urlInput, setUrlInput] = useState('');
@@ -1161,22 +1175,70 @@ const getInitialCatFormData = () => ({
         umbral: ''
     }
 });
-        const [formData, setFormData] = useState({
+        const getEmptyProfileFormData = () => ({
                 nombre: '', nacionalidad: '', ciudad: '', profesion: '', fechaNacimiento: '', estaturaCm: '', fotos: [],
                 galeria: { fotos: [], gifs: [], videos: [] },
                 batallaFotosPreferidas: getDefaultBattlePhotoPreferences(),
                 puntuaciones: createZeroScores()
             });
-            const mapProfileToFormData = (profile = {}) => ({
-                ...profile,
-                galeria: {
-                    fotos: Array.isArray(profile?.galeria?.fotos) ? profile.galeria.fotos : [],
-                    gifs: Array.isArray(profile?.galeria?.gifs) ? profile.galeria.gifs : [],
-                    videos: Array.isArray(profile?.galeria?.videos) ? profile.galeria.videos : []
-                },
-                batallaFotosPreferidas: sanitizeBattlePhotoPreferences(profile?.batallaFotosPreferidas),
-                puntuaciones: profile?.puntuaciones ? { ...createZeroScores(), ...profile.puntuaciones } : createZeroScores()
-            });
+        const [formData, setFormData] = useState(getEmptyProfileFormData);
+            const mapProfileToFormData = (profile = {}) => {
+                const baseFormData = getEmptyProfileFormData();
+                const safeProfile = profile && typeof profile === 'object' ? profile : {};
+                const normalizedScores = safeProfile?.puntuaciones && typeof safeProfile.puntuaciones === 'object'
+                    ? { ...baseFormData.puntuaciones, ...safeProfile.puntuaciones }
+                    : baseFormData.puntuaciones;
+
+                return {
+                    ...safeProfile,
+                    ...baseFormData,
+                    nombre: typeof safeProfile.nombre === 'string' ? safeProfile.nombre : '',
+                    nacionalidad: typeof safeProfile.nacionalidad === 'string' ? safeProfile.nacionalidad : '',
+                    ciudad: typeof safeProfile.ciudad === 'string' ? safeProfile.ciudad : '',
+                    profesion: typeof safeProfile.profesion === 'string' ? safeProfile.profesion : '',
+                    fechaNacimiento: typeof safeProfile.fechaNacimiento === 'string' ? safeProfile.fechaNacimiento : '',
+                    estaturaCm: safeProfile.estaturaCm === undefined || safeProfile.estaturaCm === null ? '' : safeProfile.estaturaCm,
+                    fotos: Array.isArray(safeProfile.fotos) ? safeProfile.fotos : [],
+                    galeria: {
+                        fotos: Array.isArray(safeProfile?.galeria?.fotos) ? safeProfile.galeria.fotos : [],
+                        gifs: Array.isArray(safeProfile?.galeria?.gifs) ? safeProfile.galeria.gifs : [],
+                        videos: Array.isArray(safeProfile?.galeria?.videos) ? safeProfile.galeria.videos : []
+                    },
+                    batallaFotosPreferidas: sanitizeBattlePhotoPreferences(safeProfile?.batallaFotosPreferidas),
+                    puntuaciones: normalizedScores
+                };
+            };
+            const openProfileEditor = (contextProfile = {}) => {
+                setFormData(mapProfileToFormData(contextProfile));
+                setEditingId(contextProfile.firebaseId || contextProfile.id || null);
+                setIsModalOpen(true);
+            };
+            const profileCompletionRows = useMemo(() => {
+                const rows = [
+                    { key: 'nombre', label: 'Nombre', value: formData?.nombre },
+                    { key: 'fotos.0', label: 'Foto principal', value: formData?.fotos?.[0] },
+                    { key: 'profesion', label: 'Profesión', value: formData?.profesion },
+                    { key: 'nacionalidad', label: 'Nacionalidad', value: formData?.nacionalidad },
+                    { key: 'ciudad', label: 'Ciudad', value: formData?.ciudad },
+                    { key: 'fechaNacimiento', label: 'Fecha de nacimiento', value: formData?.fechaNacimiento },
+                    { key: 'estaturaCm', label: 'Estatura', value: formData?.estaturaCm }
+                ];
+
+                const withStatus = rows.map((row) => {
+                    const normalizedValue = typeof row.value === 'string' ? row.value.trim() : row.value;
+                    const isComplete = !(normalizedValue === '' || normalizedValue === undefined || normalizedValue === null);
+                    return {
+                        ...row,
+                        isComplete,
+                        preview: isComplete ? String(normalizedValue) : 'Sin completar'
+                    };
+                });
+
+                return {
+                    completed: withStatus.filter((row) => row.isComplete),
+                    missing: withStatus.filter((row) => !row.isComplete)
+                };
+            }, [formData]);
             const addGalleryImage = async ({ profileId, url, tag = 'fotos', label = '', type = 'image' }) => {
                 const normalizedUrl = (url || '').trim();
                 const normalizedLabel = GALLERY_LABELS.includes(label) ? label : '';
@@ -1882,6 +1944,29 @@ const getInitialCatFormData = () => ({
                 }
             }, [selectedGalleryIndex]);
             useEffect(() => {
+                if (!contextMenuOpen) return;
+
+                const handleOutsideClick = (event) => {
+                    if (contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
+                        setContextMenuOpen(false);
+                    }
+                };
+
+                const handleEscape = (event) => {
+                    if (event.key === 'Escape') {
+                        setContextMenuOpen(false);
+                    }
+                };
+
+                document.addEventListener('mousedown', handleOutsideClick);
+                window.addEventListener('keydown', handleEscape);
+
+                return () => {
+                    document.removeEventListener('mousedown', handleOutsideClick);
+                    window.removeEventListener('keydown', handleEscape);
+                };
+            }, [contextMenuOpen]);
+            useEffect(() => {
                 let isCancelled = false;
                 const imagePhotos = allGalleryPhotos.filter((photo) => photo.type === 'image' && photo.url);
 
@@ -1891,10 +1976,19 @@ const getInitialCatFormData = () => ({
                 }
 
                 const run = async () => {
-                    const results = await Promise.all(imagePhotos.map(async (photo) => ({
-                        id: photo.id,
-                        isBroken: await checkImageUrlIsBroken(photo.url)
-                    })));
+                    const concurrency = 8;
+                    const results = [];
+
+                    for (let index = 0; index < imagePhotos.length; index += concurrency) {
+                        const batch = imagePhotos.slice(index, index + concurrency);
+                        const batchResults = await Promise.all(batch.map(async (photo) => ({
+                            id: photo.id,
+                            isBroken: await checkImageUrlIsBroken(photo.url)
+                        })));
+
+                        results.push(...batchResults);
+                        if (isCancelled) return;
+                    }
 
                     if (isCancelled) return;
 
@@ -2049,10 +2143,7 @@ const saveProfile = (e) => {
                     db.ref('perfiles').push(profileData)
                         .then(() => {
                             setIsModalOpen(false);
-                            setFormData({
-                                nombre: '', nacionalidad: '', ciudad: '', profesion: '', fechaNacimiento: '', estaturaCm: '', fotos: [],
-                                galeria: { fotos: [], gifs: [], videos: [] }, batallaFotosPreferidas: getDefaultBattlePhotoPreferences(), puntuaciones: createZeroScores()
-                            });
+                            setFormData(getEmptyProfileFormData());
                         })
                         .catch(err => console.error("No pudo entrar el perfil:", err));
                 }
@@ -2133,10 +2224,43 @@ const saveProfile = (e) => {
                 }
             };
 
-            const deleteProfile = async () => {
-                if (!editingId) return;
-                const profile = perfiles.find((p) => p.firebaseId === editingId);
-                requestDeleteProfile(profile || { firebaseId: editingId, nombre: formData?.nombre || 'este perfil' });
+            const closeContextMenu = () => {
+                setContextMenuOpen(false);
+                setContextProfile(null);
+            };
+
+            const handleContextMenuOpen = (event, profile) => {
+                event.preventDefault();
+                setContextMenuOpen(true);
+                setContextMenuPosition({ x: event.clientX, y: event.clientY });
+                setContextProfile(profile);
+            };
+
+            const handleContextEdit = () => {
+                if (!contextProfile) return;
+                setFormData(mapProfileToFormData(contextProfile));
+                setEditingId(contextProfile.firebaseId);
+                setIsModalOpen(true);
+                closeContextMenu();
+            };
+
+            const handleContextDelete = async () => {
+                if (!contextProfile?.firebaseId) return;
+                const confirmed = confirm('¿Borrar perfil? Esta acción también lo elimina de Firebase.');
+                if (!confirmed) {
+                    closeContextMenu();
+                    return;
+                }
+
+                try {
+                    await db.ref(`perfiles/${contextProfile.firebaseId}`).remove();
+                    setPerfiles(prev => prev.filter(p => p.firebaseId !== contextProfile.firebaseId));
+                    closeContextMenu();
+                } catch (error) {
+                    console.error("No se pudo borrar el perfil:", error);
+                    alert("No se pudo borrar el perfil. Probá de nuevo.");
+                    closeContextMenu();
+                }
             };
             const getArenaStats = (arenaName, profileId) => {
                 const stats = arenaBattleState[arenaName]?.stats?.[profileId] || { wins: 0, battles: 0 };
@@ -2779,7 +2903,7 @@ const saveProfile = (e) => {
                         <button
                             onClick={() => {
                                 setEditingId(null);
-                                setFormData({nombre:'', nacionalidad:'', ciudad:'', profesion:'', fechaNacimiento:'', estaturaCm:'', fotos:[], galeria:{ fotos: [], gifs: [], videos: [] }, batallaFotosPreferidas:getDefaultBattlePhotoPreferences(), puntuaciones:createZeroScores()});
+                                setFormData(getEmptyProfileFormData());
                                 setIsModalOpen(true);
                             }}
                             className="btn-metal btn-metal--gold py-5 rounded-[2.2rem] text-[11px] flex items-center justify-center gap-2 flex-shrink-0"
@@ -2899,6 +3023,7 @@ const saveProfile = (e) => {
                                 setContextMenuProfileId(null);
                                 openProfileEditor(p);
                             }}
+                            onContextMenu={(event) => handleContextMenuOpen(event, p)}
                             className="profile-card group relative rounded-2xl overflow-hidden cursor-pointer"
                             style={{
                                 '--card-neon-color': neonClass.color,
@@ -2979,6 +3104,32 @@ const saveProfile = (e) => {
                     );
                 })}
             </div>
+
+            {contextMenuOpen && contextProfile && (
+                <div
+                    ref={contextMenuRef}
+                    className="fixed z-[120] min-w-[11rem] rounded-xl border border-cyan-400/40 bg-slate-950/95 backdrop-blur-md shadow-[0_12px_32px_rgba(0,0,0,0.55)] p-2"
+                    style={{
+                        top: `${contextMenuPosition.y}px`,
+                        left: `${contextMenuPosition.x}px`
+                    }}
+                >
+                    <button
+                        type="button"
+                        onClick={handleContextEdit}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-cyan-200 hover:bg-cyan-500/20 transition-colors"
+                    >
+                        Editar
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleContextDelete}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-rose-300 hover:bg-rose-500/20 transition-colors"
+                    >
+                        Eliminar
+                    </button>
+                </div>
+            )}
         </div>
     )}
 
@@ -3830,7 +3981,7 @@ const saveProfile = (e) => {
                 </thead>
                 <tbody>
                     {sortedProfiles.map((p, idx) => (
-<tr key={p.id} onClick={() => { setFormData(mapProfileToFormData(p)); setEditingId(p.id); setIsModalOpen(true); }}
+<tr key={p.firebaseId || p.id} onClick={() => openProfileEditor(p)}
     className={`cursor-pointer border-b border-slate-700/70 last:border-0 transition-all duration-300 group ${idx === 0 ? 'podium-1' : idx === 1 ? 'podium-2' : idx === 2 ? 'podium-3' : 'hover:bg-white/5'}`}>
 
     <td className="px-8 py-5">
@@ -4080,6 +4231,36 @@ const saveProfile = (e) => {
 
         {/* CAMPOS DE TEXTO */}
         <div className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-emerald-400/30 bg-emerald-950/20 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-emerald-300">Datos actuales</p>
+                    {profileCompletionRows.completed.length > 0 ? (
+                        <ul className="mt-3 space-y-1">
+                            {profileCompletionRows.completed.map((row) => (
+                                <li key={row.key} className="text-xs text-emerald-100/90">
+                                    <span className="font-black">{row.label}:</span> {row.preview}
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-3 text-xs text-emerald-100/70">Todavía no hay datos cargados.</p>
+                    )}
+                </div>
+                <div className="rounded-2xl border border-amber-300/30 bg-amber-950/20 p-4">
+                    <p className="text-[10px] font-black uppercase tracking-[0.2em] text-amber-200">Datos faltantes por completar</p>
+                    {profileCompletionRows.missing.length > 0 ? (
+                        <ul className="mt-3 space-y-1">
+                            {profileCompletionRows.missing.map((row) => (
+                                <li key={row.key} className="text-xs text-amber-100/90">
+                                    <span className="font-black">{row.label}</span>
+                                </li>
+                            ))}
+                        </ul>
+                    ) : (
+                        <p className="mt-3 text-xs text-amber-100/70">¡Perfil completo en esta sección!</p>
+                    )}
+                </div>
+            </div>
             <div className="grid grid-cols-2 gap-4">
                 <input required placeholder="Nombre Artístico" className="col-span-2 w-full theme-surface-soft border theme-border-secondary p-5 rounded-xl outline-none focus:ring-2 focus:ring-[var(--glow-gold)] text-white font-bold" value={formData.nombre} onChange={e => setFormData({...formData, nombre: e.target.value})} />
 
