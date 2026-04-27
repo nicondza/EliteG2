@@ -2788,68 +2788,6 @@ const saveProfile = (e) => {
                             ))}
                         </nav>
 
-                        {activeTab === 'GALERIA' && (
-                            <div className="hud-frame hud-frame--panel space-y-5 mb-8 p-6 theme-surface-soft rounded-2xl gothic-frame gothic-frame--secondary animate-in fade-in slide-in-from-bottom-2 duration-500">
-                                <div>
-                                    <h4 className="text-[10px] font-black text-[var(--metal-gold)] uppercase tracking-widest flex items-center gap-2">
-                                        <LucideIcon name="images" size={12} /> Filtros de Galería
-                                    </h4>
-                                    <p className="text-[10px] font-semibold text-slate-500 tracking-[0.08em] mt-2">
-                                        {filteredGalleryPhotos.length} archivos visibles de {sourceGalleryPhotos.length}
-                                    </p>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    {GALLERY_VIEW_MODES.map((mode) => (
-                                        <button
-                                            key={mode}
-                                            onClick={() => setGalleryViewMode(mode)}
-                                            className={`btn-metal px-3 py-3 rounded-2xl text-[10px] transition-all ${galleryViewMode === mode ? 'btn-metal--gold text-[#fffaf0]' : 'btn-metal--silver text-slate-900'}`}
-                                        >
-                                            {GALLERY_VIEW_MODE_LABELS[mode]}
-                                        </button>
-                                    ))}
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                    <button
-                                        onClick={() => setGalleryFilterLabel('INICIAL')}
-                                        className="btn-neon px-3 py-3 rounded-2xl text-[10px] transition-all"
-                                        style={getGalleryFilterButtonStyle('INICIAL', galleryFilterLabel === 'INICIAL')}
-                                    >
-                                        Inicial
-                                    </button>
-                                    {GALLERY_LABELS.map(label => {
-                                        const isActive = galleryFilterLabel === label;
-                                        return (
-                                            <button
-                                                key={label}
-                                                onClick={() => setGalleryFilterLabel(label)}
-                                                className="btn-neon px-3 py-3 rounded-2xl text-[10px] transition-all"
-                                                style={getGalleryFilterButtonStyle(label, isActive)}
-                                            >
-                                                {label} · {galleryStats[label] || 0}
-                                            </button>
-                                        );
-                                    })}
-                                    <button
-                                        onClick={() => setGalleryFilterLabel('100')}
-                                        className="btn-neon px-3 py-3 rounded-2xl text-[10px] transition-all"
-                                        style={getGalleryFilterButtonStyle('100', galleryFilterLabel === '100')}
-                                    >
-                                        100%
-                                    </button>
-                                </div>
-
-                                <button
-                                    onClick={() => setGalleryFilterLabel('INICIAL')}
-                                    className="w-full text-[9px] font-black text-slate-600 hover:text-[var(--metal-gold)] uppercase tracking-tighter transition-colors"
-                                >
-                                    Limpiar filtro de etiquetas
-                                </button>
-                            </div>
-                        )}
-
                         {activeTab === 'RANKING' && (
                             <div className="hud-frame hud-frame--panel space-y-6 mb-8 p-6 theme-surface-soft rounded-2xl gothic-frame gothic-frame--secondary animate-in fade-in slide-in-from-bottom-2 duration-500">
                                 <h4 className="text-[10px] font-black text-[var(--metal-gold)] uppercase tracking-widest flex items-center gap-2">
