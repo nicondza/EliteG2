@@ -3276,7 +3276,7 @@ const saveProfile = (e) => {
                                         setSelectedGalleryBucket(null);
                                         setSelectedGalleryIndex(null);
                                     }}
-                                    className={`btn-metal w-full flex items-center gap-4 px-6 py-4 rounded-[2rem] text-sm transition-all ${activeTab === item.id ? 'btn-metal--gold is-active text-[#fffaf0]' : 'btn-metal--silver text-slate-900'}`}
+                                    className={`btn-metal sidebar-nav-btn w-full flex items-center gap-4 px-6 py-4 rounded-[2rem] text-sm transition-all ${activeTab === item.id ? 'is-active text-[#ecfeff]' : 'text-slate-900'}`}
                                 >
                                     <LucideIcon name={item.icon} size={18} />
                                     {item.label}
