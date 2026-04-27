@@ -2333,13 +2333,6 @@ const saveProfile = (e) => {
                     closeContextMenu();
                 }
             };
-            const getArenaStats = (arenaName, profileId, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
-                const globalKey = getArenaGlobalKey(arenaName);
-                const stats = arenaGlobalState[globalKey]?.stats?.[profileId] || { wins: 0, battles: 0 };
-                const score = stats.battles ? Math.round((stats.wins / stats.battles) * 100) : 0;
-                return { ...stats, score };
-            };
-
             const getProfileHeightLabel = (profile) => {
                 const rawHeight = profile?.estaturaCm;
                 if (rawHeight === undefined || rawHeight === null || rawHeight === '') {
