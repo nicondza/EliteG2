@@ -189,6 +189,13 @@
             if (!normalized || isBlockedMediaUrl(normalized)) return fallback;
             return normalized;
         };
+        const normalizeSearchValue = (value = '') => (
+            String(value || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim()
+        );
         const detectGalleryItemType = (url = '', explicitType = '') => {
             if (explicitType === 'video' || explicitType === 'image') return explicitType;
             const normalizedUrl = (url || '').trim();
@@ -1154,6 +1161,8 @@
 
             const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
+            const [characterSearchTerm, setCharacterSearchTerm] = useState('');
+            const [selectedCharacterId, setSelectedCharacterId] = useState(null);
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
@@ -3243,6 +3252,32 @@ const saveProfile = (e) => {
 
                 return sortDirection === 'asc' ? result : -result;
             });
+            const filteredCharacterProfiles = useMemo(() => {
+                const normalizedSearchTerm = normalizeSearchValue(characterSearchTerm);
+                return (perfiles || []).filter((profile) => {
+                    const normalizedName = normalizeSearchValue(profile?.nombre || '');
+                    if (!normalizedSearchTerm) return Boolean(normalizedName);
+                    return normalizedName.includes(normalizedSearchTerm);
+                });
+            }, [perfiles, characterSearchTerm]);
+            const selectedCharacterProfile = useMemo(() => (
+                (perfiles || []).find((profile) => profile?.firebaseId === selectedCharacterId) || null
+            ), [perfiles, selectedCharacterId]);
+            const selectedCharacterRankingPosition = useMemo(() => {
+                if (!selectedCharacterProfile?.firebaseId) return null;
+                const rankingIndex = sortedProfiles.findIndex((profile) => profile?.firebaseId === selectedCharacterProfile.firebaseId);
+                return rankingIndex >= 0 ? rankingIndex + 1 : null;
+            }, [sortedProfiles, selectedCharacterProfile]);
+
+            useEffect(() => {
+                if (!filteredCharacterProfiles.length) {
+                    if (selectedCharacterId !== null) setSelectedCharacterId(null);
+                    return;
+                }
+                if (!selectedCharacterId || !filteredCharacterProfiles.some((profile) => profile?.firebaseId === selectedCharacterId)) {
+                    setSelectedCharacterId(filteredCharacterProfiles[0].firebaseId);
+                }
+            }, [filteredCharacterProfiles, selectedCharacterId]);
             return (
                 <div className="app-space-theme flex h-screen overflow-hidden bg-[#020617] stone-wall-surface relative">
                     {isSidebarOpen && (
@@ -3263,6 +3298,7 @@ const saveProfile = (e) => {
                         <nav className="flex-1 space-y-2 mb-8">
                             {[
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
+                                { id: 'PERSONAJE', icon: 'user-round-search', label: 'Personaje' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
                                 { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
@@ -3411,6 +3447,112 @@ const saveProfile = (e) => {
                                         </div>
                                     );
                                 })}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'PERSONAJE' && !selectedCategory && (
+                        <div className="space-y-8 animate-in fade-in duration-500">
+                            <div>
+                                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Personajes</h2>
+                                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Buscá, seleccioná y compará detalle por perfil</p>
+                            </div>
+                            <div className="theme-surface-card rounded-2xl border theme-border-secondary p-5">
+                                <input
+                                    type="text"
+                                    value={characterSearchTerm}
+                                    onChange={(event) => setCharacterSearchTerm(event.target.value)}
+                                    placeholder="Buscar por nombre..."
+                                    className="w-full theme-surface-soft border theme-border-secondary rounded-xl p-3 text-sm text-slate-100 outline-none focus:border-cyan-500"
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,460px)] gap-8 items-start">
+                                <div className="theme-surface-card rounded-2xl border theme-border-secondary p-5">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                                        {filteredCharacterProfiles.map((p) => {
+                                            const isSelected = selectedCharacterId === p.firebaseId;
+                                            return (
+                                                <button
+                                                    key={p.firebaseId}
+                                                    type="button"
+                                                    onClick={() => setSelectedCharacterId(p.firebaseId)}
+                                                    className={`text-left rounded-xl border p-3 transition-all ${isSelected ? 'border-cyan-400 bg-cyan-900/20' : 'theme-border-secondary bg-slate-950/40 hover:border-cyan-700'}`}
+                                                >
+                                                    <img
+                                                        src={getSafeImageSrc(p?.fotos?.[0], 'https://via.placeholder.com/400x500')}
+                                                        className="w-full h-48 object-cover rounded-lg mb-3"
+                                                        onError={applyCryingEmojiFallback}
+                                                    />
+                                                    <p className="text-sm font-black text-white">{p.nombre || 'Sin nombre'}</p>
+                                                    <p className="text-[11px] text-slate-300 mt-1">{p.profesion || 'Sin profesión'}</p>
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                    {!filteredCharacterProfiles.length && (
+                                        <p className="text-sm text-slate-300">No se encontraron personajes para “{characterSearchTerm}”.</p>
+                                    )}
+                                </div>
+                                <div className="theme-surface-card rounded-2xl border theme-border-secondary p-5 sticky top-6">
+                                    {selectedCharacterProfile ? (
+                                        (() => {
+                                            const p = selectedCharacterProfile;
+                                            const profileScores = getProfileScores(p);
+                                            return (
+                                                <div className="space-y-5">
+                                                    <img
+                                                        src={getSafeImageSrc(p?.fotos?.[0], 'https://via.placeholder.com/400x500')}
+                                                        className="w-full h-64 object-cover rounded-xl"
+                                                        onError={applyCryingEmojiFallback}
+                                                    />
+                                                    <div>
+                                                        <h3 className="text-xl font-black text-white">{p.nombre || 'Sin nombre'}</h3>
+                                                        <p className="text-xs text-slate-300 mt-2">
+                                                            {p.profesion || 'Sin profesión'} · {p.nacionalidad || 'Sin nacionalidad'} · {p.ciudad || 'Sin ciudad'} · {calcularEdad(p.fechaNacimiento)} años
+                                                        </p>
+                                                        <p className="text-xs text-[var(--metal-gold)] mt-1">
+                                                            Ranking actual: {selectedCharacterRankingPosition ? `#${selectedCharacterRankingPosition}` : 'Sin posición'}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-xs font-black uppercase tracking-[0.16em] text-slate-300 mb-3">Puntaje por característica</h4>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            {CARACTERISTICAS.map((caracteristica) => (
+                                                                <div key={caracteristica} className="rounded-lg border theme-border-secondary bg-slate-950/50 px-3 py-2">
+                                                                    <p className="text-[10px] uppercase tracking-wide text-slate-400">{caracteristica}</p>
+                                                                    <p className="text-sm font-black text-white">{(profileScores[caracteristica] || 0).toFixed(0)}</p>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div>
+                                                        <h4 className="text-xs font-black uppercase tracking-[0.16em] text-slate-300 mb-3">Categorías principales</h4>
+                                                        <div className="grid grid-cols-3 gap-2">
+                                                            {[
+                                                                { key: 'Rostro', value: getRostroScore(p) },
+                                                                { key: 'Cuerpo', value: getCuerpoScore(p) },
+                                                                { key: 'Actitud', value: getActitudScore(p) }
+                                                            ].map((item) => (
+                                                                <button
+                                                                    key={item.key}
+                                                                    type="button"
+                                                                    onClick={() => setScoreBreakdownModal({ isOpen: true, profile: p, category: item.key })}
+                                                                    className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-2 py-3 hover:border-emerald-400 transition-colors"
+                                                                    title={`Ver batallas ganadas y perdidas de ${p.nombre} en ${item.key}`}
+                                                                >
+                                                                    <p className="text-[10px] uppercase text-emerald-300">{item.key}</p>
+                                                                    <p className="text-base font-black text-white">{item.value.toFixed(0)}</p>
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()
+                                    ) : (
+                                        <p className="text-sm text-slate-300">Seleccioná un personaje para ver su detalle.</p>
+                                    )}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -4632,68 +4774,69 @@ const saveProfile = (e) => {
                 </tbody>
             </table>
 
-            {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
-                const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
-                return (
-                    <div
-                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-                        onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
-                    >
-                        <div
-                            className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
-                            onClick={(event) => event.stopPropagation()}
-                        >
-                            <div className="flex items-start justify-between gap-4 mb-6">
-                                <div>
-                                    <h3 className="font-title text-xl font-black text-white tracking-wide">
-                                        {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
-                                    </h3>
-                                    <p className="text-xs text-slate-300 mt-1">
-                                        Detalle de enfrentamientos ganados y perdidos.
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
-                                    className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
-                                >
-                                    Cerrar
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
-                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
-                                    {breakdown.wins.length ? (
-                                        <ul className="space-y-2">
-                                            {breakdown.wins.map((name, idx) => (
-                                                <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
-                                    )}
-                                </div>
-
-                                <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
-                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
-                                    {breakdown.losses.length ? (
-                                        <ul className="space-y-2">
-                                            {breakdown.losses.map((name, idx) => (
-                                                <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
         </div>
     )}
+
+    {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
+        const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
+        return (
+            <div
+                className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+            >
+                <div
+                    className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <div className="flex items-start justify-between gap-4 mb-6">
+                        <div>
+                            <h3 className="font-title text-xl font-black text-white tracking-wide">
+                                {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
+                            </h3>
+                            <p className="text-xs text-slate-300 mt-1">
+                                Detalle de enfrentamientos ganados y perdidos.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                            className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
+                        >
+                            Cerrar
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
+                            <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
+                            {breakdown.wins.length ? (
+                                <ul className="space-y-2">
+                                    {breakdown.wins.map((name, idx) => (
+                                        <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
+                            <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
+                            {breakdown.losses.length ? (
+                                <ul className="space-y-2">
+                                    {breakdown.losses.map((name, idx) => (
+                                        <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    })()}
 
     {/* 4. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
     {activeTab === 'CATEGORIAS' && !selectedCategory && (
