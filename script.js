@@ -1081,6 +1081,7 @@
         const App = () => {
             const [carpetaAbierta, setCarpetaAbierta] = React.useState(null);
             const galleryWindowRef = useRef(null);
+            const contextMenuRef = useRef(null);
             const [perfiles, setPerfiles] = useState([]);
                 const neonColors = {
         "CANTANTE": { color: "#0ea5e9", sombra: "rgba(14,165,233,0.8)" },    // Celeste
@@ -1109,6 +1110,9 @@
             const [isCatModalOpen, setIsCatModalOpen] = useState(false);
             const [editingId, setEditingId] = useState(null);
             const [selectedCategory, setSelectedCategory] = React.useState(null);
+            const [contextMenuOpen, setContextMenuOpen] = useState(false);
+            const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+            const [contextProfile, setContextProfile] = useState(null);
             const [sortBy, setSortBy] = useState('promedio');
             const [sortDirection, setSortDirection] = useState('desc');
             const [urlInput, setUrlInput] = useState('');
@@ -1878,6 +1882,29 @@ const getInitialCatFormData = () => ({
                 }
             }, [selectedGalleryIndex]);
             useEffect(() => {
+                if (!contextMenuOpen) return;
+
+                const handleOutsideClick = (event) => {
+                    if (contextMenuRef.current && !contextMenuRef.current.contains(event.target)) {
+                        setContextMenuOpen(false);
+                    }
+                };
+
+                const handleEscape = (event) => {
+                    if (event.key === 'Escape') {
+                        setContextMenuOpen(false);
+                    }
+                };
+
+                document.addEventListener('mousedown', handleOutsideClick);
+                window.addEventListener('keydown', handleEscape);
+
+                return () => {
+                    document.removeEventListener('mousedown', handleOutsideClick);
+                    window.removeEventListener('keydown', handleEscape);
+                };
+            }, [contextMenuOpen]);
+            useEffect(() => {
                 let isCancelled = false;
                 const imagePhotos = allGalleryPhotos.filter((photo) => photo.type === 'image' && photo.url);
 
@@ -2100,6 +2127,45 @@ const saveProfile = (e) => {
                 } catch (error) {
                     console.error("No se pudo borrar el perfil:", error);
                     alert("No se pudo borrar el perfil. Probá de nuevo.");
+                }
+            };
+
+            const closeContextMenu = () => {
+                setContextMenuOpen(false);
+                setContextProfile(null);
+            };
+
+            const handleContextMenuOpen = (event, profile) => {
+                event.preventDefault();
+                setContextMenuOpen(true);
+                setContextMenuPosition({ x: event.clientX, y: event.clientY });
+                setContextProfile(profile);
+            };
+
+            const handleContextEdit = () => {
+                if (!contextProfile) return;
+                setFormData(mapProfileToFormData(contextProfile));
+                setEditingId(contextProfile.firebaseId);
+                setIsModalOpen(true);
+                closeContextMenu();
+            };
+
+            const handleContextDelete = async () => {
+                if (!contextProfile?.firebaseId) return;
+                const confirmed = confirm('¿Borrar perfil? Esta acción también lo elimina de Firebase.');
+                if (!confirmed) {
+                    closeContextMenu();
+                    return;
+                }
+
+                try {
+                    await db.ref(`perfiles/${contextProfile.firebaseId}`).remove();
+                    setPerfiles(prev => prev.filter(p => p.firebaseId !== contextProfile.firebaseId));
+                    closeContextMenu();
+                } catch (error) {
+                    console.error("No se pudo borrar el perfil:", error);
+                    alert("No se pudo borrar el perfil. Probá de nuevo.");
+                    closeContextMenu();
                 }
             };
             const getArenaStats = (arenaName, profileId) => {
@@ -2864,6 +2930,7 @@ const saveProfile = (e) => {
                                 if (typeof setEditingId === 'function') setEditingId(p.firebaseId);
                                 if (typeof setIsModalOpen === 'function') setIsModalOpen(true);
                             }}
+                            onContextMenu={(event) => handleContextMenuOpen(event, p)}
                             className="profile-card group relative rounded-2xl overflow-hidden cursor-pointer"
                             style={{
                                 '--card-neon-color': neonClass.color,
@@ -2903,6 +2970,32 @@ const saveProfile = (e) => {
                     );
                 })}
             </div>
+
+            {contextMenuOpen && contextProfile && (
+                <div
+                    ref={contextMenuRef}
+                    className="fixed z-[120] min-w-[11rem] rounded-xl border border-cyan-400/40 bg-slate-950/95 backdrop-blur-md shadow-[0_12px_32px_rgba(0,0,0,0.55)] p-2"
+                    style={{
+                        top: `${contextMenuPosition.y}px`,
+                        left: `${contextMenuPosition.x}px`
+                    }}
+                >
+                    <button
+                        type="button"
+                        onClick={handleContextEdit}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-cyan-200 hover:bg-cyan-500/20 transition-colors"
+                    >
+                        Editar
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleContextDelete}
+                        className="w-full text-left px-3 py-2 rounded-lg text-xs font-black uppercase tracking-wider text-rose-300 hover:bg-rose-500/20 transition-colors"
+                    >
+                        Eliminar
+                    </button>
+                </div>
+            )}
         </div>
     )}
 
