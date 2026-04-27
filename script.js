@@ -2294,21 +2294,119 @@ const saveProfile = (e) => {
                 return null;
             };
 
-            const rebuildArenaStatsFromMatchups = (matchups = {}) => {
-                return Object.keys(matchups || {}).reduce((acc, key) => {
-                    if (!matchups[key]) return acc;
-                    const [profileAId, profileBId] = String(key).split('__');
-                    if (!profileAId || !profileBId) return acc;
+            const normalizeBattleEvents = (battleEvents = [], validProfileIds = null) => {
+                const validSet = validProfileIds instanceof Set ? validProfileIds : null;
+                return (Array.isArray(battleEvents) ? battleEvents : [])
+                    .map((event, index) => ({
+                        winnerId: String(event?.winnerId || '').trim(),
+                        loserId: String(event?.loserId || '').trim(),
+                        timestamp: Number(event?.timestamp) || 0,
+                        __index: index
+                    }))
+                    .filter((event) => (
+                        !!event.winnerId &&
+                        !!event.loserId &&
+                        event.winnerId !== event.loserId &&
+                        (!validSet || (validSet.has(event.winnerId) && validSet.has(event.loserId)))
+                    ))
+                    .sort((a, b) => (a.timestamp - b.timestamp) || (a.__index - b.__index))
+                    .map(({ __index, ...event }) => event);
+            };
 
-                    const prevA = acc[profileAId] || { wins: 0, battles: 0 };
-                    const prevB = acc[profileBId] || { wins: 0, battles: 0 };
+            const rebuildArenaStatsFromMatchups = (battleEvents = [], orderedIds = []) => {
+                const orderedIdList = Array.isArray(orderedIds) ? orderedIds.filter(Boolean) : [];
+                const orderedSet = new Set(orderedIdList);
+                const normalizedEvents = normalizeBattleEvents(battleEvents, orderedSet.size ? orderedSet : null);
+                const resolvedWins = {};
+                const ensureNode = (profileId) => {
+                    if (!resolvedWins[profileId]) {
+                        resolvedWins[profileId] = new Set();
+                    }
+                    return resolvedWins[profileId];
+                };
+                const canBeat = (sourceId, targetId) => (
+                    sourceId === targetId
+                        ? false
+                        : !!resolvedWins[sourceId]?.has(targetId)
+                );
+                const getNodesThatBeat = (targetId) => (
+                    Object.keys(resolvedWins).filter((candidateId) => canBeat(candidateId, targetId))
+                );
 
-                    return {
-                        ...acc,
-                        [profileAId]: { wins: prevA.wins, battles: prevA.battles + 1 },
-                        [profileBId]: { wins: prevB.wins, battles: prevB.battles + 1 }
-                    };
-                }, {});
+                normalizedEvents.forEach((event) => {
+                    const winnerId = event.winnerId;
+                    const loserId = event.loserId;
+                    if (!winnerId || !loserId || winnerId === loserId) return;
+                    ensureNode(winnerId);
+                    ensureNode(loserId);
+
+                    if (canBeat(loserId, winnerId) || canBeat(winnerId, loserId)) {
+                        return;
+                    }
+
+                    const upperNodes = [winnerId, ...getNodesThatBeat(winnerId)];
+                    const lowerNodes = [loserId, ...Array.from(resolvedWins[loserId] || [])];
+
+                    upperNodes.forEach((upperId) => {
+                        const upperWins = ensureNode(upperId);
+                        lowerNodes.forEach((lowerId) => {
+                            if (upperId === lowerId) return;
+                            upperWins.add(lowerId);
+                        });
+                    });
+                });
+
+                const matchups = {};
+                const stats = {};
+                orderedIdList.forEach((profileId) => {
+                    stats[profileId] = { wins: 0, battles: 0 };
+                    ensureNode(profileId);
+                });
+
+                for (let i = 0; i < orderedIdList.length - 1; i++) {
+                    for (let j = i + 1; j < orderedIdList.length; j++) {
+                        const profileAId = orderedIdList[i];
+                        const profileBId = orderedIdList[j];
+                        const pairKey = [profileAId, profileBId].sort().join('__');
+                        const aBeatsB = canBeat(profileAId, profileBId);
+                        const bBeatsA = canBeat(profileBId, profileAId);
+                        if (!aBeatsB && !bBeatsA) continue;
+                        matchups[pairKey] = true;
+                        stats[profileAId].battles += 1;
+                        stats[profileBId].battles += 1;
+                        if (aBeatsB && !bBeatsA) {
+                            stats[profileAId].wins += 1;
+                        } else if (bBeatsA && !aBeatsB) {
+                            stats[profileBId].wins += 1;
+                        }
+                    }
+                }
+
+                return { matchups, stats, battleEvents: normalizedEvents };
+            };
+
+            const getArenaScoreFromStats = (stats = {}, profileId = '') => {
+                const profileStats = stats?.[profileId] || { wins: 0, battles: 0 };
+                if (!profileStats.battles) return 0;
+                return Math.round((profileStats.wins / profileStats.battles) * 100);
+            };
+
+            const getImpactedProfileIdsByStats = (previousStats = {}, nextStats = {}, baselineIds = []) => {
+                const impacted = new Set((baselineIds || []).filter(Boolean));
+                const allIds = new Set([
+                    ...Object.keys(previousStats || {}),
+                    ...Object.keys(nextStats || {})
+                ]);
+
+                allIds.forEach((profileId) => {
+                    const prevScore = getArenaScoreFromStats(previousStats, profileId);
+                    const nextScore = getArenaScoreFromStats(nextStats, profileId);
+                    if (prevScore !== nextScore) {
+                        impacted.add(profileId);
+                    }
+                });
+
+                return Array.from(impacted);
             };
 
             const normalizeArenaState = (arenaState) => {
@@ -2320,8 +2418,13 @@ const saveProfile = (e) => {
                         .map(p => p.firebaseId)
                 );
                 const orderedIds = (arenaState.orderedIds || []).filter(id => profileIds.has(id));
-                const stats = arenaState.stats || {};
-                const matchups = arenaState.matchups || {};
+                const normalizedEvents = normalizeBattleEvents(arenaState.battleEvents || [], profileIds);
+                const hasDirectEvents = normalizedEvents.length > 0;
+                const rebuiltState = hasDirectEvents
+                    ? rebuildArenaStatsFromMatchups(normalizedEvents, orderedIds)
+                    : { matchups: arenaState.matchups || {}, stats: arenaState.stats || {}, battleEvents: normalizedEvents };
+                const stats = rebuiltState.stats || {};
+                const matchups = rebuiltState.matchups || {};
                 const currentChampionId = arenaState.championId;
                 const currentChallengerId = arenaState.challengerId;
                 const currentPairIsValid = (
@@ -2344,6 +2447,7 @@ const saveProfile = (e) => {
                     orderedIds,
                     stats,
                     matchups,
+                    battleEvents: rebuiltState.battleEvents || [],
                     championId: nextPair ? nextPair[0] : null,
                     challengerId: nextPair ? nextPair[1] : null,
                     isFinished
@@ -2400,14 +2504,16 @@ const saveProfile = (e) => {
                 };
 
                 const orderedIds = orderedProfiles.map(p => p.firebaseId);
-                const matchups = {};
+                const battleEvents = [];
+                const { matchups, stats } = rebuildArenaStatsFromMatchups(battleEvents, orderedIds);
                 const initialPair = findNextPendingPair(orderedIds, matchups);
                 if (!initialPair) return;
 
                 const nextArenaState = {
                     orderedIds,
-                    stats: {},
+                    stats,
                     matchups,
+                    battleEvents,
                     championId: initialPair[0],
                     challengerId: initialPair[1],
                     isFinished: false
@@ -2431,85 +2537,27 @@ const saveProfile = (e) => {
                 }
             };
 
-            const registerBattleWinner = (arenaName, winnerId) => {
+            const registerBattleWinner = async (arenaName, winnerId) => {
                 const state = arenaBattleState[arenaName];
                 if (!state || state.isFinished) return;
 
-                const { orderedIds = [], championId, challengerId, matchups = {}, stats = {} } = state;
+                const { orderedIds = [], championId, challengerId, battleEvents = [], stats = {} } = state;
                 if (winnerId !== championId && winnerId !== challengerId) return;
                 const loserId = winnerId === championId ? challengerId : championId;
                 if (!winnerId || !loserId) return;
 
-                const pairKey = [winnerId, loserId].sort().join('__');
-                const updatedMatchups = { ...matchups, [pairKey]: true };
-
-                const prevWinner = stats[winnerId] || { wins: 0, battles: 0 };
-                const prevLoser = stats[loserId] || { wins: 0, battles: 0 };
-                const updatedStats = {
-                    ...stats,
-                    [winnerId]: { wins: prevWinner.wins + 1, battles: prevWinner.battles + 1 },
-                    [loserId]: { wins: prevLoser.wins, battles: prevLoser.battles + 1 }
-                };
-
-                const winnerScore = Math.round((updatedStats[winnerId].wins / updatedStats[winnerId].battles) * 100);
-                const loserScore = updatedStats[loserId].battles
-                    ? Math.round((updatedStats[loserId].wins / updatedStats[loserId].battles) * 100)
-                    : 0;
-
-                setPerfiles(prev => prev.map(profile => {
-                    if (profile.firebaseId === winnerId) {
-                        return {
-                            ...profile,
-                            puntuaciones: { ...(profile.puntuaciones || {}), [arenaName]: winnerScore }
-                        };
-                    }
-                    if (profile.firebaseId === loserId) {
-                        return {
-                            ...profile,
-                            puntuaciones: { ...(profile.puntuaciones || {}), [arenaName]: loserScore }
-                        };
-                    }
-                    return profile;
-                }));
-
-                updateProfileArenaScore(winnerId, arenaName, winnerScore);
-                updateProfileArenaScore(loserId, arenaName, loserScore);
-
-                const findNextOpponentForWinner = (ids, currentWinnerId, playedMatchups) => {
-                    if (!currentWinnerId) return null;
-
-                    for (const contenderId of ids) {
-                        if (!contenderId || contenderId === currentWinnerId) continue;
-                        const key = [currentWinnerId, contenderId].sort().join('__');
-                        if (!playedMatchups[key]) {
-                            return contenderId;
-                        }
-                    }
-
-                    return null;
-                };
-
-                const findNextPendingPair = (ids, playedMatchups) => {
-                    for (let i = 0; i < ids.length - 1; i++) {
-                        for (let j = i + 1; j < ids.length; j++) {
-                            const key = [ids[i], ids[j]].sort().join('__');
-                            if (!playedMatchups[key]) {
-                                return [ids[i], ids[j]];
-                            }
-                        }
-                    }
-                    return null;
-                };
-
-                const winnerNextOpponentId = findNextOpponentForWinner(orderedIds, winnerId, updatedMatchups);
-                const nextPair = winnerNextOpponentId
-                    ? [winnerId, winnerNextOpponentId]
-                    : findNextPendingPair(orderedIds, updatedMatchups);
+                const updatedEvents = normalizeBattleEvents([
+                    ...(Array.isArray(battleEvents) ? battleEvents : []),
+                    { timestamp: Date.now(), winnerId, loserId }
+                ], new Set(orderedIds));
+                const { matchups: updatedMatchups, stats: updatedStats, battleEvents: normalizedEvents } = rebuildArenaStatsFromMatchups(updatedEvents, orderedIds);
+                const nextPair = findNextPendingPair(orderedIds, updatedMatchups);
 
                 const nextArenaState = {
                     ...state,
                     stats: updatedStats,
                     matchups: updatedMatchups,
+                    battleEvents: normalizedEvents,
                     championId: nextPair ? nextPair[0] : null,
                     challengerId: nextPair ? nextPair[1] : null,
                     isFinished: !nextPair
@@ -2520,8 +2568,25 @@ const saveProfile = (e) => {
                     [arenaName]: nextArenaState
                 }));
 
-                db.ref(`arenaBattleState/${arenaName}`).set(nextArenaState)
-                    .catch(error => console.error('No se pudo guardar avance de batallas:', error));
+                const impactedIds = getImpactedProfileIdsByStats(stats, updatedStats, [winnerId, loserId]);
+
+                setPerfiles((prev) => prev.map((profile) => {
+                    if (!impactedIds.includes(profile.firebaseId)) return profile;
+                    const nextScore = getArenaScoreFromStats(updatedStats, profile.firebaseId);
+                    return {
+                        ...profile,
+                        puntuaciones: { ...(profile.puntuaciones || {}), [arenaName]: nextScore }
+                    };
+                }));
+
+                try {
+                    await db.ref(`arenaBattleState/${arenaName}`).set(nextArenaState);
+                    await Promise.all(impactedIds.map((profileId) => (
+                        updateProfileArenaScore(profileId, arenaName, getArenaScoreFromStats(updatedStats, profileId))
+                    )));
+                } catch (error) {
+                    console.error('No se pudo guardar avance de batallas:', error);
+                }
             };
 
             const resetAllScores = async () => {
@@ -2604,19 +2669,27 @@ const saveProfile = (e) => {
                     alert('Ese cruce no existe o no fue jugado todavía.');
                     return;
                 }
+                const currentBattleEvents = normalizeBattleEvents(arenaState.battleEvents || [], new Set(arenaState.orderedIds || []));
+                const eventIndex = currentBattleEvents
+                    .map((event, index) => ({ event, index }))
+                    .reverse()
+                    .find(({ event }) => [event.winnerId, event.loserId].sort().join('__') === pairKey)?.index;
+                if (eventIndex === undefined) {
+                    alert('Ese cruce solo existe por transitividad, no como batalla directa.');
+                    return;
+                }
 
                 const confirmed = window.confirm('¿Seguro que querés deshacer esta batalla?');
                 if (!confirmed) return;
 
                 try {
-                    const updatedMatchups = { ...currentMatchups };
-                    delete updatedMatchups[pairKey];
-
-                    const rebuiltStats = rebuildArenaStatsFromMatchups(updatedMatchups);
+                    const updatedBattleEvents = currentBattleEvents.filter((_, index) => index !== eventIndex);
+                    const rebuiltArena = rebuildArenaStatsFromMatchups(updatedBattleEvents, arenaState.orderedIds || []);
                     const candidateState = {
                         ...arenaState,
-                        matchups: updatedMatchups,
-                        stats: rebuiltStats
+                        matchups: rebuiltArena.matchups,
+                        stats: rebuiltArena.stats,
+                        battleEvents: rebuiltArena.battleEvents
                     };
                     const normalizedState = normalizeArenaState(candidateState);
 
@@ -2632,21 +2705,20 @@ const saveProfile = (e) => {
 
                     await db.ref(`arenaBattleState/${arenaName}`).set(normalizedState);
 
-                    const affectedIds = [profileAId, profileBId].filter(Boolean);
-                    await Promise.all(affectedIds.map(async (profileId) => {
-                        const profileStats = normalizedState.stats?.[profileId] || { wins: 0, battles: 0 };
-                        const nextScore = profileStats.battles
-                            ? Math.round((profileStats.wins / profileStats.battles) * 100)
-                            : 0;
-                        await db.ref(`perfiles/${profileId}/puntuaciones/${arenaName}`).set(nextScore);
-                    }));
+                    const affectedIds = getImpactedProfileIdsByStats(
+                        arenaState.stats || {},
+                        normalizedState.stats || {},
+                        [profileAId, profileBId]
+                    );
+                    await Promise.all(affectedIds.map((profileId) => (
+                        db.ref(`perfiles/${profileId}/puntuaciones/${arenaName}`).set(
+                            getArenaScoreFromStats(normalizedState.stats, profileId)
+                        )
+                    )));
 
                     setPerfiles((prev) => prev.map((profile) => {
                         if (!affectedIds.includes(profile.firebaseId)) return profile;
-                        const profileStats = normalizedState.stats?.[profile.firebaseId] || { wins: 0, battles: 0 };
-                        const nextScore = profileStats.battles
-                            ? Math.round((profileStats.wins / profileStats.battles) * 100)
-                            : 0;
+                        const nextScore = getArenaScoreFromStats(normalizedState.stats, profile.firebaseId);
                         return {
                             ...profile,
                             puntuaciones: {
