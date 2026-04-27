@@ -1393,12 +1393,16 @@
             const [galleryFilterLabel, setGalleryFilterLabel] = useState('INICIAL');
             const [galleryViewMode, setGalleryViewMode] = useState('GENERAL');
             const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(null);
+            const [selectedSceneIndex, setSelectedSceneIndex] = useState(null);
             const [selectedGalleryBucket, setSelectedGalleryBucket] = useState(null);
             const [selectedCharacterBucketIds, setSelectedCharacterBucketIds] = useState([]);
             const [selectedTagLabels, setSelectedTagLabels] = useState([]);
             const [isGalleryPlaying, setIsGalleryPlaying] = useState(false);
             const [isGalleryRandom, setIsGalleryRandom] = useState(false);
+            const [isScenePlaying, setIsScenePlaying] = useState(false);
+            const [isSceneRandom, setIsSceneRandom] = useState(false);
             const [galleryPlaybackSeconds, setGalleryPlaybackSeconds] = useState(5);
+            const [globalMedia, setGlobalMedia] = useState([]);
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
             const [isEditingGalleryLabel, setIsEditingGalleryLabel] = useState(false);
             const [galleryLabelDraft, setGalleryLabelDraft] = useState('');
@@ -1408,6 +1412,7 @@
             const [brokenGallerySavingMap, setBrokenGallerySavingMap] = useState({});
             const [brokenGalleryEditingMap, setBrokenGalleryEditingMap] = useState({});
             const galleryPlaybackTimeoutRef = useRef(null);
+            const scenePlaybackTimeoutRef = useRef(null);
 
             const [filters, setFilters] = useState({
                 nacionalidad: 'Todas',
@@ -2213,6 +2218,38 @@ const getInitialCatFormData = () => ({
             const selectedGalleryPhoto = selectedGalleryIndex === null
                 ? null
                 : filteredGalleryPhotos[clampIndex(selectedGalleryIndex, filteredGalleryPhotos.length)] || null;
+            const sceneMediaPhotos = useMemo(() => {
+                const rawMedia = Array.isArray(globalMedia)
+                    ? globalMedia
+                    : globalMedia && typeof globalMedia === 'object'
+                        ? Object.values(globalMedia)
+                        : [];
+
+                return rawMedia
+                    .map((item, index) => {
+                        const candidate = item && typeof item === 'object' ? item : { url: item };
+                        const normalizedCandidate = candidate?.media && typeof candidate.media === 'object'
+                            ? { ...candidate.media, label: candidate.label || candidate.media.label || '', type: candidate.type || candidate.media.type || '' }
+                            : candidate;
+                        const normalizedItem = normalizeGalleryItem(normalizedCandidate, candidate.type || normalizedCandidate.type || '');
+                        if (!normalizedItem.url) return null;
+                        return {
+                            id: candidate.id || candidate.firebaseId || `scene-${index}-${normalizedItem.url}`,
+                            url: normalizedItem.url,
+                            label: normalizedItem.label || '',
+                            type: normalizedItem.type,
+                            isGif: normalizedItem.type === 'image' && isGifUrl(normalizedItem.url),
+                            nombre: candidate.nombre || candidate.title || candidate.sceneName || candidate.autor || 'Escena',
+                            profesion: candidate.profesion || candidate.category || 'Escenas/Fotos',
+                            nacionalidad: candidate.nacionalidad || '',
+                            fotoPerfil: normalizedItem.url
+                        };
+                    })
+                    .filter(Boolean);
+            }, [globalMedia]);
+            const selectedScenePhoto = selectedSceneIndex === null
+                ? null
+                : sceneMediaPhotos[clampIndex(selectedSceneIndex, sceneMediaPhotos.length)] || null;
             const brokenGalleryPhotos = useMemo(() => {
                 return allGalleryPhotos.filter((photo) => photo.type === 'image' && brokenGalleryMap[photo.id]);
             }, [allGalleryPhotos, brokenGalleryMap]);
@@ -2254,6 +2291,9 @@ const getInitialCatFormData = () => ({
                 if (activeTab !== 'GALERIA') {
                     setSelectedGalleryBucket(null);
                     setSelectedGalleryIndex(null);
+                }
+                if (activeTab !== 'ESCENAS_FOTOS') {
+                    setSelectedSceneIndex(null);
                 }
             }, [activeTab]);
 
@@ -2307,6 +2347,47 @@ const getInitialCatFormData = () => ({
                     setIsGalleryRandom(false);
                 }
             }, [selectedGalleryIndex]);
+            useEffect(() => {
+                if (selectedSceneIndex === null) {
+                    setIsScenePlaying(false);
+                    setIsSceneRandom(false);
+                }
+            }, [selectedSceneIndex]);
+            useEffect(() => {
+                if (selectedSceneIndex === null) return;
+
+                if (!sceneMediaPhotos.length) {
+                    setSelectedSceneIndex(null);
+                    return;
+                }
+
+                if (selectedSceneIndex >= sceneMediaPhotos.length) {
+                    setSelectedSceneIndex(0);
+                }
+            }, [sceneMediaPhotos, selectedSceneIndex]);
+            useEffect(() => {
+                if (selectedSceneIndex === null) return;
+
+                const handleSceneKeydown = (event) => {
+                    if (event.key === 'Escape') {
+                        setSelectedSceneIndex(null);
+                        return;
+                    }
+
+                    if (!sceneMediaPhotos.length) return;
+
+                    if (event.key === 'ArrowRight') {
+                        setSelectedSceneIndex((current) => clampIndex((current ?? 0) + 1, sceneMediaPhotos.length));
+                    }
+
+                    if (event.key === 'ArrowLeft') {
+                        setSelectedSceneIndex((current) => clampIndex((current ?? 0) - 1, sceneMediaPhotos.length));
+                    }
+                };
+
+                window.addEventListener('keydown', handleSceneKeydown);
+                return () => window.removeEventListener('keydown', handleSceneKeydown);
+            }, [sceneMediaPhotos.length, selectedSceneIndex]);
             useEffect(() => {
                 if (!contextMenuOpen) return;
 
@@ -2397,10 +2478,35 @@ const getInitialCatFormData = () => ({
                     }
                 };
             }, [isGalleryPlaying, selectedGalleryPhoto, filteredGalleryPhotos, isGalleryRandom, galleryPlaybackSeconds]);
+            useEffect(() => {
+                if (scenePlaybackTimeoutRef.current) {
+                    clearTimeout(scenePlaybackTimeoutRef.current);
+                    scenePlaybackTimeoutRef.current = null;
+                }
+
+                if (!isScenePlaying || !selectedScenePhoto) return;
+                if (selectedScenePhoto.type === 'video') return;
+
+                const timeoutDuration = galleryPlaybackSeconds * 1000;
+                scenePlaybackTimeoutRef.current = setTimeout(() => {
+                    setSelectedSceneIndex((current) => getNextPlayableIndex(current, sceneMediaPhotos, isSceneRandom));
+                }, timeoutDuration);
+
+                return () => {
+                    if (scenePlaybackTimeoutRef.current) {
+                        clearTimeout(scenePlaybackTimeoutRef.current);
+                        scenePlaybackTimeoutRef.current = null;
+                    }
+                };
+            }, [isScenePlaying, selectedScenePhoto, sceneMediaPhotos, isSceneRandom, galleryPlaybackSeconds]);
 
             const openGalleryViewer = (index, autoplay = false) => {
                 setSelectedGalleryIndex(index);
                 setIsGalleryPlaying(autoplay);
+            };
+            const openSceneViewer = (index, autoplay = false) => {
+                setSelectedSceneIndex(index);
+                setIsScenePlaying(autoplay);
             };
             const addCharacterToGallerySelection = (bucketId) => {
                 if (!bucketId) return;
@@ -2424,8 +2530,14 @@ const getInitialCatFormData = () => ({
                 setIsGalleryPlaying(false);
                 setSelectedGalleryIndex(null);
             };
+            const closeSceneViewer = () => {
+                setIsScenePlaying(false);
+                setSelectedSceneIndex(null);
+            };
             const showNextGalleryPhoto = () => setSelectedGalleryIndex((current) => getNextPlayableIndex(current, filteredGalleryPhotos, isGalleryRandom));
             const showPreviousGalleryPhoto = () => setSelectedGalleryIndex((current) => clampIndex((current ?? 0) - 1, filteredGalleryPhotos.length));
+            const showNextScenePhoto = () => setSelectedSceneIndex((current) => getNextPlayableIndex(current, sceneMediaPhotos, isSceneRandom));
+            const showPreviousScenePhoto = () => setSelectedSceneIndex((current) => clampIndex((current ?? 0) - 1, sceneMediaPhotos.length));
             const saveSelectedGalleryLabel = async () => {
                 if (!selectedGalleryPhoto?.profileId || !selectedGalleryPhoto?.sourceTag || !Number.isInteger(selectedGalleryPhoto?.sourceIndex)) return;
                 try {
@@ -4227,6 +4339,117 @@ const saveProfile = (e) => {
                 </>
             )}
 
+            {activeTab === 'ESCENAS_FOTOS' && !selectedCategory && (
+                <div className="space-y-10 animate-in fade-in duration-500">
+                    <div className="flex flex-col xl:flex-row xl:items-end xl:justify-between gap-6">
+                        <div>
+                            <h2 className="neon-sign neon-sign--magenta text-4xl font-black italic text-white uppercase tracking-tighter">Escenas/Fotos</h2>
+                            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">
+                                Archivo global de escenas ({sceneMediaPhotos.length} elementos)
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-3">
+                            <button
+                                type="button"
+                                onClick={() => openSceneViewer(0, true)}
+                                disabled={!sceneMediaPhotos.length}
+                                className="btn-metal btn-metal--gold inline-flex items-center gap-2 px-5 py-3 rounded-full text-[10px] disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                <LucideIcon name="play" size={14} />
+                                Play Escenas
+                            </button>
+                            <div className="inline-flex items-center gap-2 rounded-full border theme-border-secondary bg-slate-950/80 px-3 py-2">
+                                <label htmlFor="scenePlaybackSeconds" className="text-[10px] font-black uppercase tracking-[0.15em] text-slate-300">
+                                    Duración
+                                </label>
+                                <select
+                                    id="scenePlaybackSeconds"
+                                    className="filter-select"
+                                    value={galleryPlaybackSeconds}
+                                    onChange={(event) => setGalleryPlaybackSeconds(Number(event.target.value))}
+                                >
+                                    {[3, 5, 7, 10].map((seconds) => (
+                                        <option key={seconds} value={seconds}>{seconds} segundos</option>
+                                    ))}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    {!sceneMediaPhotos.length ? (
+                        <div className="py-24 border border-dashed theme-border-secondary rounded-2xl text-center bg-slate-950/30">
+                            <div className="w-20 h-20 rounded-full bg-slate-900 border theme-border-secondary flex items-center justify-center mx-auto mb-6">
+                                <LucideIcon name="image-off" size={28} className="text-slate-600" />
+                            </div>
+                            <h3 className="font-title text-xl font-black italic text-white tracking-[0.06em]">No hay escenas para mostrar</h3>
+                            <p className="font-title text-xs font-medium text-slate-500 tracking-[0.06em] mt-3">
+                                Cargá elementos en <code>globalMedia</code> para visualizar esta sección.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-8">
+                            {sceneMediaPhotos.map((photo, index) => {
+                                const labelStyle = getGalleryLabelStyle(photo.label);
+                                return (
+                                    <button
+                                        key={photo.id}
+                                        type="button"
+                                        onClick={() => openSceneViewer(index)}
+                                        className="group text-left theme-surface-card border theme-border-secondary rounded-[2.4rem] overflow-hidden hover:border-[color:color-mix(in_srgb,var(--metal-gold)_40%,transparent)] hover:shadow-[0_0_30px_rgba(34,211,238,0.12)] transition-all duration-500 focus:outline-none focus:ring-2 focus:ring-[var(--glow-gold)] focus:ring-offset-2 focus:ring-offset-[#020617]"
+                                    >
+                                        <div className="aspect-[4/5] relative overflow-hidden bg-slate-950">
+                                            {photo.type === 'video' ? (() => {
+                                                const embedInfo = getVideoEmbedInfo(photo.url);
+                                                if (embedInfo) {
+                                                    return (
+                                                        <div className="w-full h-full bg-[radial-gradient(circle_at_top,_rgba(34,211,238,0.3),_rgba(15,23,42,0.95))] flex flex-col items-center justify-center gap-4 p-6 text-center">
+                                                            <div className="w-16 h-16 rounded-full border border-[var(--metal-gold)]/40 bg-slate-950/70 flex items-center justify-center text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] text-2xl">▶</div>
+                                                            <div>
+                                                                <p className="font-title text-sm font-semibold tracking-[0.1em] text-white">Video</p>
+                                                                <p className="font-title text-[10px] font-medium tracking-[0.08em] text-slate-400 mt-2">{embedInfo.provider}</p>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return <video src={photo.url} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" muted playsInline preload="metadata" />;
+                                            })() : <img src={getSafeImageSrc(photo.url, CRYING_EMOJI_FALLBACK)} alt={`${photo.nombre} - ${photo.label || 'escena'}`} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105" onError={applyCryingEmojiFallback} />}
+                                            <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-gradient-to-t from-cyan-950/40 via-transparent to-transparent" />
+                                            <div className="absolute inset-x-0 bottom-0 p-5 bg-gradient-to-t from-[#020617] via-[#020617]/60 to-transparent">
+                                                <div className="flex items-end justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-lg font-black italic text-white tracking-tighter leading-none">{photo.nombre}</p>
+                                                        <p className="text-[10px] font-black uppercase tracking-widest text-[var(--metal-gold)] mt-2">{photo.profesion}</p>
+                                                        {photo.nacionalidad && (
+                                                            <p className="font-title text-[9px] font-medium tracking-[0.06em] text-slate-400 mt-1">{photo.nacionalidad}</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="flex flex-col items-end gap-2">
+                                                        <div className="px-3 py-1 rounded-full border theme-border-secondary bg-slate-950/85 text-[9px] font-black uppercase tracking-[0.3em] text-slate-200">
+                                                            {photo.type === 'video' ? 'VIDEO' : (photo.isGif ? 'GIF' : 'IMG')}
+                                                        </div>
+                                                        <div
+                                                            className="min-w-[46px] h-[46px] rounded-2xl border flex items-center justify-center text-sm font-black uppercase shadow-xl"
+                                                            style={{
+                                                                background: labelStyle.bg,
+                                                                borderColor: labelStyle.border,
+                                                                color: labelStyle.text,
+                                                                boxShadow: `0 0 16px ${labelStyle.glow}`
+                                                            }}
+                                                        >
+                                                            {photo.label || '—'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+                </div>
+            )}
+
             {selectedGalleryPhoto && (
                 <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={closeGalleryViewer}>
                     <button
@@ -4400,6 +4623,132 @@ const saveProfile = (e) => {
                                 )}
                             </div>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {selectedScenePhoto && (
+                <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={closeSceneViewer}>
+                    <button
+                        type="button"
+                        onClick={closeSceneViewer}
+                        className="btn-metal btn-metal--danger absolute top-4 right-4 sm:top-6 sm:right-6 w-12 h-12 rounded-full flex items-center justify-center"
+                        aria-label="Cerrar visor de escena"
+                    >
+                        <span className="text-[26px] leading-none font-black">✕</span>
+                    </button>
+
+                    <div className="w-full max-w-6xl max-h-full flex flex-col gap-4" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-4 px-1 sm:px-2">
+                            <div>
+                                <p className="text-2xl sm:text-3xl font-black italic text-white tracking-tighter">{selectedScenePhoto.nombre}</p>
+                                <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.3em] text-[var(--metal-gold)] mt-2">{selectedScenePhoto.profesion}{selectedScenePhoto.nacionalidad ? ` · ${selectedScenePhoto.nacionalidad}` : ''}</p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {sceneMediaPhotos.length > 1 && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsScenePlaying((prev) => !prev)}
+                                            className="btn-metal btn-metal--gold px-4 py-2 rounded-full text-[10px]"
+                                        >
+                                            {isScenePlaying ? 'Pause' : 'Play'}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsSceneRandom((prev) => !prev)}
+                                            className={`btn-metal px-4 py-2 rounded-full text-[10px] transition-all ${isSceneRandom ? 'btn-metal--gold is-active text-[#fffaf0]' : 'btn-metal--silver text-slate-900'}`}
+                                        >
+                                            Aleatorio {isSceneRandom ? 'ON' : 'OFF'}
+                                        </button>
+                                    </>
+                                )}
+                                <div className="px-3 py-2 rounded-full border theme-border-secondary bg-slate-950/85 text-[10px] font-black uppercase tracking-[0.3em] text-slate-200">
+                                    {selectedScenePhoto.type === 'video' ? 'VIDEO' : (selectedScenePhoto.isGif ? 'GIF' : 'IMG')}
+                                </div>
+                                <div
+                                    className="min-w-[52px] h-[52px] rounded-2xl border flex items-center justify-center text-base font-black uppercase shadow-xl"
+                                    style={{
+                                        background: getGalleryLabelStyle(selectedScenePhoto.label).bg,
+                                        borderColor: getGalleryLabelStyle(selectedScenePhoto.label).border,
+                                        color: getGalleryLabelStyle(selectedScenePhoto.label).text,
+                                        boxShadow: `0 0 20px ${getGalleryLabelStyle(selectedScenePhoto.label).glow}`
+                                    }}
+                                >
+                                    {selectedScenePhoto.label || '—'}
+                                </div>
+                            </div>
+                        </div>
+                        <div className="relative flex-1 min-h-0 rounded-[2rem] overflow-hidden border theme-border-secondary bg-black/50">
+                            {selectedScenePhoto.type === 'video' ? (() => {
+                                const embedInfo = getVideoEmbedInfo(selectedScenePhoto.url);
+                                if (embedInfo) {
+                                    return (
+                                        <iframe
+                                            src={embedInfo.src}
+                                            title={`${selectedScenePhoto.nombre} video`}
+                                            className="w-full h-[calc(100vh-14rem)] bg-black"
+                                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                                            allowFullScreen
+                                        />
+                                    );
+                                }
+                                return (
+                                    <video
+                                        src={selectedScenePhoto.url}
+                                        controls
+                                        playsInline
+                                        autoPlay={isScenePlaying}
+                                        onEnded={() => {
+                                            if (isScenePlaying && sceneMediaPhotos.length > 1) {
+                                                showNextScenePhoto();
+                                            }
+                                        }}
+                                        onError={() => {
+                                            if (sceneMediaPhotos.length > 1) {
+                                                showNextScenePhoto();
+                                            }
+                                        }}
+                                        className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
+                                    />
+                                );
+                            })() : (
+                                <img
+                                    src={getSafeImageSrc(selectedScenePhoto.url, CRYING_EMOJI_FALLBACK)}
+                                    alt={`${selectedScenePhoto.nombre} - ${selectedScenePhoto.label || 'escena'}`}
+                                    className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
+                                    onError={(e) => {
+                                        applyCryingEmojiFallback(e);
+                                        if (sceneMediaPhotos.length > 1) {
+                                            showNextScenePhoto();
+                                        }
+                                    }}
+                                />
+                            )}
+                            {sceneMediaPhotos.length > 1 && (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={(event) => { event.stopPropagation(); showPreviousScenePhoto(); }}
+                                        className="absolute left-4 bottom-4 sm:left-6 sm:bottom-6 w-10 h-10 rounded-full border theme-border-secondary bg-slate-900/90 text-white flex items-center justify-center hover:border-[var(--metal-gold)] hover:text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] transition-all shadow-lg shadow-black/40"
+                                        aria-label="Escena anterior"
+                                    >
+                                        <span className="text-[20px] leading-none font-black">←</span>
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={(event) => { event.stopPropagation(); showNextScenePhoto(); }}
+                                        className="absolute right-4 bottom-4 sm:right-6 sm:bottom-6 w-10 h-10 rounded-full border theme-border-secondary bg-slate-900/90 text-white flex items-center justify-center hover:border-[var(--metal-gold)] hover:text-[color:color-mix(in_srgb,var(--metal-gold)_72%,white)] transition-all shadow-lg shadow-black/40"
+                                        aria-label="Escena siguiente"
+                                    >
+                                        <span className="text-[20px] leading-none font-black">→</span>
+                                    </button>
+                                </>
+                            )}
+                        </div>
+                        <p className="text-[10px] font-bold uppercase tracking-[0.28em] text-slate-400 px-1 sm:px-2">
+                            {selectedSceneIndex + 1} de {sceneMediaPhotos.length} archivos visibles
+                        </p>
                     </div>
                 </div>
             )}
