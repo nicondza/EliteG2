@@ -988,6 +988,7 @@
                 <script>
                     const viewer = document.getElementById('fullscreenViewer');
                     const galleryGrid = document.getElementById('galleryGrid');
+                    const viewerStage = document.getElementById('viewerStage');
                     const viewerSlides = Array.from(document.querySelectorAll('.viewer-slide'));
                     const viewerPrevButton = document.getElementById('viewerPrev');
                     const viewerNextButton = document.getElementById('viewerNext');
@@ -1091,12 +1092,21 @@
                         if (viewerNextButton) viewerNextButton.disabled = disableNavigation;
                     }
 
-                    function renderViewerSlide(index) {
+                    function renderViewerSlide(index, options = {}) {
                         if (!viewerSlides.length) return;
+                        const shouldSyncScroll = options.syncScroll !== false;
+                        const scrollBehavior = options.scrollBehavior || 'smooth';
                         currentViewerIndex = Math.max(0, Math.min(index, viewerSlides.length - 1));
                         viewerSlides.forEach(function(slide, slideIndex) {
                             slide.classList.toggle('active', slideIndex === currentViewerIndex);
                         });
+                        if (shouldSyncScroll && viewerStage && isMobileViewerMode()) {
+                            const viewportWidth = getViewerViewportWidth();
+                            viewerStage.scrollTo({
+                                left: currentViewerIndex * viewportWidth,
+                                behavior: scrollBehavior
+                            });
+                        }
                         const activeSlide = viewerSlides[currentViewerIndex];
                         const activeImage = activeSlide ? activeSlide.querySelector('img') : null;
                         const activeVideo = activeSlide ? activeSlide.querySelector('video') : null;
@@ -1129,6 +1139,22 @@
                         scheduleViewerAutoplay();
                     }
 
+                    function syncViewerIndexFromScroll() {
+                        if (!viewerStage || !viewerSlides.length || !isMobileViewerMode() || !viewer.classList.contains('open')) return;
+                        const viewportWidth = getViewerViewportWidth();
+                        const nextIndex = Math.max(0, Math.min(
+                            Math.round(viewerStage.scrollLeft / viewportWidth),
+                            viewerSlides.length - 1
+                        ));
+                        if (nextIndex !== currentViewerIndex) {
+                            renderViewerSlide(nextIndex, { syncScroll: false });
+                        }
+                        clearViewerScrollDebounceTimer();
+                        viewerScrollDebounceTimer = setTimeout(function() {
+                            scheduleViewerAutoplay();
+                        }, 140);
+                    }
+
                     function openFullscreenViewer(index) {
                         if (!viewerSlides.length) return;
                         const parsedIndex = Number(index);
@@ -1153,6 +1179,7 @@
                         document.body.style.width = previousBodyWidth;
                         window.scrollTo(0, viewerScrollTop);
                         clearViewerAutoplayTimer();
+                        clearViewerScrollDebounceTimer();
                     }
                     function showNextViewerPhoto(event) {
                         if (event) event.stopPropagation();
