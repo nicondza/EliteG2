@@ -146,6 +146,7 @@
         };
         const VIDEO_FILE_REGEX = /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i;
         const GIF_FILE_REGEX = /\.gif(\?.*)?$/i;
+        const SCENE_FREE_CATEGORIES = ['General', 'Acción', 'Romántica', 'NSFW'];
         const YOUTUBE_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i;
         const VIMEO_REGEX = /vimeo\.com\/(?:video\/)?(\d+)/i;
         const getVideoEmbedInfo = (url) => {
@@ -1178,6 +1179,10 @@
             const [urlInput, setUrlInput] = useState('');
             const [galleryLabel, setGalleryLabel] = useState(GALLERY_LABELS[0]);
             const [galleryMediaType, setGalleryMediaType] = useState('image');
+            const [sceneUrlInput, setSceneUrlInput] = useState('');
+            const [sceneFileInput, setSceneFileInput] = useState('');
+            const [sceneCategory, setSceneCategory] = useState('');
+            const [sceneType, setSceneType] = useState('image');
             const [galleryFilterLabel, setGalleryFilterLabel] = useState('INICIAL');
             const [galleryViewMode, setGalleryViewMode] = useState('GENERAL');
             const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(null);
@@ -1477,6 +1482,69 @@ const getInitialCatFormData = () => ({
                     console.error('Error al cargar archivo local de galería:', error);
                 } finally {
                     event.target.value = '';
+                }
+            };
+            const handleLocalSceneFileUpload = async (event) => {
+                const selectedFile = event.target.files?.[0];
+                if (!selectedFile) return;
+                try {
+                    const dataUrl = await readFileAsDataUrl(selectedFile);
+                    const mimeType = String(selectedFile.type || '').toLowerCase();
+                    const inferredType = mimeType.includes('gif')
+                        ? 'gif'
+                        : mimeType.startsWith('video/')
+                            ? 'video'
+                            : 'image';
+                    setSceneFileInput(dataUrl);
+                    setSceneType(inferredType);
+                } catch (error) {
+                    console.error('Error al cargar archivo local de escena:', error);
+                    alert('No se pudo leer el archivo seleccionado.');
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            const sceneCategoryOptions = useMemo(() => {
+                const existingCategoryLabels = (categorias || [])
+                    .map((category) => String(category?.label || '').trim())
+                    .filter(Boolean);
+                return [...new Set([...existingCategoryLabels, ...SCENE_FREE_CATEGORIES])];
+            }, [categorias]);
+            const submitScenePhoto = async () => {
+                const normalizedUrlInput = String(sceneUrlInput || '').trim();
+                const normalizedFileInput = String(sceneFileInput || '').trim();
+                const finalUrl = normalizedUrlInput || normalizedFileInput;
+                const normalizedCategory = String(sceneCategory || '').trim();
+                const normalizedType = String(sceneType || '').trim();
+
+                if (!finalUrl) {
+                    alert('Ingresá una URL o cargá un archivo para la escena.');
+                    return;
+                }
+                if (!normalizedCategory) {
+                    alert('Seleccioná una categoría para la escena.');
+                    return;
+                }
+                if (!normalizedType) {
+                    alert('Seleccioná el tipo de escena.');
+                    return;
+                }
+
+                try {
+                    await db.ref('escenasFotos').push({
+                        url: finalUrl,
+                        categoria: normalizedCategory,
+                        type: normalizedType,
+                        createdAt: firebase.database.ServerValue.TIMESTAMP
+                    });
+                    setSceneUrlInput('');
+                    setSceneFileInput('');
+                    setSceneCategory('');
+                    setSceneType('image');
+                    alert('¡Escena guardada correctamente!');
+                } catch (error) {
+                    console.error('Error al guardar escena en Firebase:', error);
+                    alert('No se pudo guardar la escena. Probá de nuevo.');
                 }
             };
             const handleDelete = async (id, e) => {
@@ -3266,7 +3334,8 @@ const saveProfile = (e) => {
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
                                 { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
-                                { id: 'GALERIA', icon: 'images', label: 'Galería' }
+                                { id: 'GALERIA', icon: 'images', label: 'Galería' },
+                                { id: 'ESCENAS_FOTOS', icon: 'clapperboard', label: 'Escenas' }
                             ].map(item => (
                                 <button
                                     key={item.id}
@@ -3411,6 +3480,78 @@ const saveProfile = (e) => {
                                         </div>
                                     );
                                 })}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'ESCENAS_FOTOS' && !selectedCategory && (
+                        <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl">
+                            <div>
+                                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Escenas</h2>
+                                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Carga rápida de fotos, gifs y videos</p>
+                            </div>
+
+                            <div className="hud-frame hud-frame--panel theme-surface-card rounded-3xl p-8 space-y-5 border theme-border-secondary">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">URL de escena</label>
+                                    <input
+                                        type="url"
+                                        placeholder="https://archivo.com/escena.jpg"
+                                        value={sceneUrlInput}
+                                        onChange={(event) => setSceneUrlInput(event.target.value)}
+                                        className="w-full theme-surface-soft border theme-border-secondary p-4 rounded-xl outline-none text-white font-bold text-xs"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Archivo local (CPU/dispositivo)</label>
+                                    <input
+                                        type="file"
+                                        accept="image/*,video/*,.gif"
+                                        onChange={handleLocalSceneFileUpload}
+                                        className="w-full theme-surface-soft border border-dashed theme-border-secondary p-4 rounded-xl outline-none text-slate-200 font-semibold text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-cyan-200 file:font-black"
+                                    />
+                                    {sceneFileInput && (
+                                        <p className="text-[10px] text-emerald-300 font-bold uppercase tracking-[0.15em]">Archivo listo para guardar.</p>
+                                    )}
+                                </div>
+
+                                <div className="grid gap-4 md:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Categoría</label>
+                                        <select
+                                            value={sceneCategory}
+                                            onChange={(event) => setSceneCategory(event.target.value)}
+                                            className="w-full theme-surface-soft border theme-border-secondary px-4 py-4 rounded-xl outline-none text-white font-black text-xs"
+                                        >
+                                            <option value="">Seleccionar categoría...</option>
+                                            {sceneCategoryOptions.map((option) => (
+                                                <option key={option} value={option}>{option}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Tipo</label>
+                                        <select
+                                            value={sceneType}
+                                            onChange={(event) => setSceneType(event.target.value)}
+                                            className="w-full theme-surface-soft border theme-border-secondary px-4 py-4 rounded-xl outline-none text-white font-black text-xs uppercase"
+                                        >
+                                            <option value="image">Image</option>
+                                            <option value="gif">Gif</option>
+                                            <option value="video">Video</option>
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={submitScenePhoto}
+                                    className="btn-metal btn-metal--gold px-8 py-4 rounded-xl text-xs"
+                                >
+                                    Guardar escena
+                                </button>
                             </div>
                         </div>
                     )}
