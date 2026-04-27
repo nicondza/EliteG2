@@ -3430,12 +3430,19 @@ const saveProfile = (e) => {
     {/* 2. VISTA DE PERFILES (CUANDO ENTRAS A UNA CARPETA) */}
     {selectedCategory && (
         <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-            <div className="hud-frame hud-frame--panel flex items-center justify-between bg-slate-900/40 p-6 rounded-2xl gothic-frame gothic-frame--ornate gothic-frame--grand">
+            <div
+                className="hud-frame hud-frame--panel profession-banner flex items-center justify-between p-6 rounded-2xl gothic-frame gothic-frame--ornate gothic-frame--grand"
+                style={{
+                    '--banner-color': (activeTab === 'CATEGORIAS'
+                        ? 'rgba(148, 163, 184, 0.8)'
+                        : getProfessionCardVisual(selectedCategory).baseColor)
+                }}
+            >
                 <button
                     onClick={() => setSelectedCategory(null)}
                     className="group flex items-center gap-3 text-[var(--metal-gold)] font-black text-xs uppercase tracking-widest"
                 >
-                    <div className="bg-[var(--metal-bronze)]/10 p-2 rounded-xl group-hover:bg-[var(--metal-bronze)] group-hover:text-white transition-all">
+                    <div className="back-btn-silver p-2 rounded-xl group-hover:text-white transition-all">
                         <i data-lucide="arrow-left" className="w-4 h-4"></i>
                     </div>
                     Volver
@@ -3483,7 +3490,7 @@ const saveProfile = (e) => {
                                     onError={applyCryingEmojiFallback}
                                 />
 
-                                <div className="absolute top-6 left-6 z-20">
+                                <div className="absolute top-3 left-3 z-20">
                                     <button
                                         type="button"
                                         onClick={(event) => {
@@ -3492,10 +3499,10 @@ const saveProfile = (e) => {
                                             setContextProfile(p);
                                             setContextMenuProfileId((prev) => prev === p.firebaseId ? null : p.firebaseId);
                                         }}
-                                        className="w-10 h-10 rounded-full bg-slate-900/90 backdrop-blur-md border border-white/15 text-slate-200 hover:text-white hover:border-[var(--metal-gold)] transition-all flex items-center justify-center"
+                                        className="card-menu-btn rounded-full bg-slate-900/88 backdrop-blur-md border border-white/10 text-slate-200 hover:text-white hover:border-[var(--metal-gold)] transition-all flex items-center justify-center"
                                         aria-label="Abrir menú contextual del perfil"
                                     >
-                                        <LucideIcon name="more-vertical" size={16} />
+                                        <LucideIcon name="more-vertical" size={12} />
                                     </button>
 
                                     {contextMenuProfileId === p.firebaseId && (
@@ -3524,7 +3531,7 @@ const saveProfile = (e) => {
                                     )}
                                 </div>
 
-                                <div className="absolute top-6 right-6 w-14 h-14 bg-slate-900/90 backdrop-blur-md rounded-full flex flex-col items-center justify-center border border-white/10">
+                                <div className="card-score-badge absolute top-2 right-2 w-14 h-14 backdrop-blur-md rounded-full flex flex-col items-center justify-center border">
                                     <span className="text-[9px] font-black text-[var(--metal-gold)] leading-none">G2</span>
                                     <span className="text-lg font-black text-white">
                                         {typeof calcularPromedio === 'function' ? calcularPromedio(p) : '8.5'}
@@ -3532,7 +3539,7 @@ const saveProfile = (e) => {
                                 </div>
 
                                 <div className="absolute bottom-4 left-4 right-4">
-                                    <div className="text-bubble w-full bg-black/60 backdrop-blur-md p-4 rounded-2xl border border-white/10">
+                                    <div className="text-bubble card-footer-profession w-full backdrop-blur-md p-4 rounded-2xl border">
                                         <h3 className="text-lg font-black text-white italic tracking-tighter leading-none flex items-center gap-2">
                                             {p.nombre}
                                             <span className="text-[var(--metal-gold)] text-sm not-italic">
