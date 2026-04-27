@@ -704,7 +704,28 @@
                     }
                     @media (max-width: 640px) {
                         .viewer-stage {
+                            display: flex;
+                            align-items: stretch;
+                            justify-content: flex-start;
+                            gap: 0;
+                            padding: 0;
+                            overflow-x: auto;
+                            overflow-y: hidden;
+                            scroll-snap-type: x mandatory;
+                            -webkit-overflow-scrolling: touch;
+                        }
+                        .viewer-stage::-webkit-scrollbar {
+                            display: none;
+                        }
+                        .viewer-slide {
+                            display: flex;
+                            flex: 0 0 100vw;
+                            min-width: 100vw;
+                            width: 100vw;
+                            height: 100dvh;
                             padding: 20px 16px 106px;
+                            box-sizing: border-box;
+                            scroll-snap-align: center;
                         }
                         .viewer-close {
                             top: 14px;
@@ -911,15 +932,35 @@
                 <script>
                     const viewer = document.getElementById('fullscreenViewer');
                     const galleryGrid = document.getElementById('galleryGrid');
+                    const viewerStage = document.getElementById('viewerStage');
                     const viewerSlides = Array.from(document.querySelectorAll('.viewer-slide'));
                     const viewerPrevButton = document.getElementById('viewerPrev');
                     const viewerNextButton = document.getElementById('viewerNext');
                     const viewerPlayToggleButton = document.getElementById('viewerPlayToggle');
                     const viewerRandomToggleButton = document.getElementById('viewerRandomToggle');
+                    const viewerMobileMediaQuery = window.matchMedia('(max-width: 640px)');
                     let currentViewerIndex = 0;
                     let viewerAutoplay = false;
                     let viewerRandom = false;
                     let viewerAutoplayTimeout = null;
+                    let viewerScrollSyncRaf = null;
+                    let viewerScrollDebounceTimer = null;
+
+                    function isMobileViewerMode() {
+                        return viewerMobileMediaQuery.matches;
+                    }
+
+                    function getViewerViewportWidth() {
+                        const stageWidth = viewerStage ? Math.round(viewerStage.clientWidth) : 0;
+                        return stageWidth || Math.round(window.innerWidth) || 1;
+                    }
+
+                    function clearViewerScrollDebounceTimer() {
+                        if (viewerScrollDebounceTimer) {
+                            clearTimeout(viewerScrollDebounceTimer);
+                            viewerScrollDebounceTimer = null;
+                        }
+                    }
 
                     function resetAddMediaModalFields() {
                         const urlInput = document.getElementById('nuevaFotoUrl');
@@ -1008,12 +1049,21 @@
                         if (viewerNextButton) viewerNextButton.disabled = disableNavigation;
                     }
 
-                    function renderViewerSlide(index) {
+                    function renderViewerSlide(index, options = {}) {
                         if (!viewerSlides.length) return;
+                        const shouldSyncScroll = options.syncScroll !== false;
+                        const scrollBehavior = options.scrollBehavior || 'smooth';
                         currentViewerIndex = Math.max(0, Math.min(index, viewerSlides.length - 1));
                         viewerSlides.forEach(function(slide, slideIndex) {
                             slide.classList.toggle('active', slideIndex === currentViewerIndex);
                         });
+                        if (shouldSyncScroll && viewerStage && isMobileViewerMode()) {
+                            const viewportWidth = getViewerViewportWidth();
+                            viewerStage.scrollTo({
+                                left: currentViewerIndex * viewportWidth,
+                                behavior: scrollBehavior
+                            });
+                        }
                         const activeSlide = viewerSlides[currentViewerIndex];
                         const activeImage = activeSlide ? activeSlide.querySelector('img') : null;
                         const activeVideo = activeSlide ? activeSlide.querySelector('video') : null;
@@ -1046,18 +1096,35 @@
                         scheduleViewerAutoplay();
                     }
 
+                    function syncViewerIndexFromScroll() {
+                        if (!viewerStage || !viewerSlides.length || !isMobileViewerMode() || !viewer.classList.contains('open')) return;
+                        const viewportWidth = getViewerViewportWidth();
+                        const nextIndex = Math.max(0, Math.min(
+                            Math.round(viewerStage.scrollLeft / viewportWidth),
+                            viewerSlides.length - 1
+                        ));
+                        if (nextIndex !== currentViewerIndex) {
+                            renderViewerSlide(nextIndex, { syncScroll: false });
+                        }
+                        clearViewerScrollDebounceTimer();
+                        viewerScrollDebounceTimer = setTimeout(function() {
+                            scheduleViewerAutoplay();
+                        }, 140);
+                    }
+
                     function openFullscreenViewer(index) {
                         if (!viewerSlides.length) return;
                         const parsedIndex = Number(index);
                         if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= viewerSlides.length) return;
                         viewer.classList.add('open');
                         document.body.style.overflow = 'hidden';
-                        renderViewerSlide(parsedIndex);
+                        renderViewerSlide(parsedIndex, { scrollBehavior: 'auto' });
                     }
                     function closeFullscreenViewer() {
                         viewer.classList.remove('open');
                         document.body.style.overflow = '';
                         clearViewerAutoplayTimer();
+                        clearViewerScrollDebounceTimer();
                     }
                     function showNextViewerPhoto(event) {
                         if (event) event.stopPropagation();
@@ -1101,6 +1168,21 @@
                     viewer.addEventListener('click', function(event) {
                         if (event.target === viewer) {
                             closeFullscreenViewer();
+                        }
+                    });
+                    if (viewerStage) {
+                        viewerStage.addEventListener('scroll', function() {
+                            if (viewerScrollSyncRaf) return;
+                            viewerScrollSyncRaf = requestAnimationFrame(function() {
+                                viewerScrollSyncRaf = null;
+                                syncViewerIndexFromScroll();
+                            });
+                        }, { passive: true });
+                    }
+                    window.addEventListener('resize', function() {
+                        if (!viewer.classList.contains('open')) return;
+                        if (isMobileViewerMode()) {
+                            renderViewerSlide(currentViewerIndex, { scrollBehavior: 'auto' });
                         }
                     });
                     window.addEventListener('keydown', function(event) {
