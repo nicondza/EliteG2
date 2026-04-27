@@ -1129,6 +1129,7 @@
             const [contextProfile, setContextProfile] = useState(null);
             const [sortBy, setSortBy] = useState('promedio');
             const [sortDirection, setSortDirection] = useState('desc');
+            const [scoreBreakdownModal, setScoreBreakdownModal] = useState({ isOpen: false, profile: null, category: null });
             const [urlInput, setUrlInput] = useState('');
             const [galleryLabel, setGalleryLabel] = useState(GALLERY_LABELS[0]);
             const [galleryMediaType, setGalleryMediaType] = useState('image');
@@ -2296,17 +2297,24 @@ const saveProfile = (e) => {
 
             const rebuildArenaStatsFromMatchups = (matchups = {}) => {
                 return Object.keys(matchups || {}).reduce((acc, key) => {
-                    if (!matchups[key]) return acc;
+                    const matchupValue = matchups[key];
+                    if (!matchupValue) return acc;
                     const [profileAId, profileBId] = String(key).split('__');
                     if (!profileAId || !profileBId) return acc;
-
                     const prevA = acc[profileAId] || { wins: 0, battles: 0 };
                     const prevB = acc[profileBId] || { wins: 0, battles: 0 };
+                    const winnerId = matchupValue?.winnerId;
 
                     return {
                         ...acc,
-                        [profileAId]: { wins: prevA.wins, battles: prevA.battles + 1 },
-                        [profileBId]: { wins: prevB.wins, battles: prevB.battles + 1 }
+                        [profileAId]: {
+                            wins: prevA.wins + (winnerId === profileAId ? 1 : 0),
+                            battles: prevA.battles + 1
+                        },
+                        [profileBId]: {
+                            wins: prevB.wins + (winnerId === profileBId ? 1 : 0),
+                            battles: prevB.battles + 1
+                        }
                     };
                 }, {});
             };
@@ -2441,7 +2449,14 @@ const saveProfile = (e) => {
                 if (!winnerId || !loserId) return;
 
                 const pairKey = [winnerId, loserId].sort().join('__');
-                const updatedMatchups = { ...matchups, [pairKey]: true };
+                const updatedMatchups = {
+                    ...matchups,
+                    [pairKey]: {
+                        winnerId,
+                        loserId,
+                        playedAt: Date.now()
+                    }
+                };
 
                 const prevWinner = stats[winnerId] || { wins: 0, battles: 0 };
                 const prevLoser = stats[loserId] || { wins: 0, battles: 0 };
@@ -2728,6 +2743,49 @@ const saveProfile = (e) => {
                 }
                 setSortBy(key);
                 setSortDirection(defaultDirection);
+            };
+
+            const SCORE_GROUP_TO_ARENAS = {
+                Rostro: ['Rostro', 'Ojos', 'Boca', 'Cabello'],
+                Cuerpo: ['Cuerpo', 'Cola', 'Pechos', 'Cintura', 'Piernas', 'Estatura'],
+                Actitud: ['Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento']
+            };
+
+            const getScoreBreakdownByCategory = (profileId, categoryKey) => {
+                const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
+                const winIds = new Set();
+                const lossIds = new Set();
+
+                arenaNames.forEach((arenaName) => {
+                    const arenaMatchups = arenaBattleState?.[arenaName]?.matchups || {};
+                    Object.values(arenaMatchups).forEach((match) => {
+                        if (!match || typeof match !== 'object') return;
+                        if (match.winnerId === profileId && match.loserId) {
+                            winIds.add(match.loserId);
+                        }
+                        if (match.loserId === profileId && match.winnerId) {
+                            lossIds.add(match.winnerId);
+                        }
+                    });
+                });
+
+                const profileNameById = new Map(
+                    (perfiles || [])
+                        .filter((profile) => profile?.firebaseId)
+                        .map((profile) => [profile.firebaseId, profile.nombre || 'Sin nombre'])
+                );
+
+                const getSortedNames = (idsSet) => (
+                    [...idsSet]
+                        .map((id) => profileNameById.get(id))
+                        .filter(Boolean)
+                        .sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }))
+                );
+
+                return {
+                    wins: getSortedNames(winIds),
+                    losses: getSortedNames(lossIds)
+                };
             };
 
             const sortedProfiles = [...filteredProfiles].sort((a, b) => {
@@ -3931,9 +3989,33 @@ const saveProfile = (e) => {
                                 Perfil {sortBy === 'nombre' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
                             </button>
                         </th>
-                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Rostro</th>
-                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Cuerpo</th>
-                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">Actitud</th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('Rostro', 'desc')}
+                                className="inline-flex items-center justify-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Rostro {sortBy === 'Rostro' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('Cuerpo', 'desc')}
+                                className="inline-flex items-center justify-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Cuerpo {sortBy === 'Cuerpo' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
+                        <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
+                            <button
+                                type="button"
+                                onClick={() => toggleSort('Actitud', 'desc')}
+                                className="inline-flex items-center justify-center gap-1 hover:text-[var(--metal-gold)] transition-colors"
+                            >
+                                Actitud {sortBy === 'Actitud' ? (sortDirection === 'asc' ? '↑' : '↓') : ''}
+                            </button>
+                        </th>
                         <th className="px-4 py-6 text-[9px] font-black uppercase tracking-widest text-center rock-carved-text">
                             <button
                                 type="button"
@@ -4007,19 +4089,43 @@ const saveProfile = (e) => {
 
 {/* Promedios por Categoría */}
 <td className="px-4 py-5 text-center">
-    <span className="text-xs font-bold text-slate-300">
+    <button
+        type="button"
+        onClick={(event) => {
+            event.stopPropagation();
+            setScoreBreakdownModal({ isOpen: true, profile: p, category: 'Rostro' });
+        }}
+        className="text-xs font-bold text-slate-300 hover:text-emerald-300 transition-colors"
+        title={`Ver detalle de batallas en Rostro de ${p.nombre}`}
+    >
         {getRostroScore(p).toFixed(0)}
-    </span>
+    </button>
 </td>
 <td className="px-4 py-5 text-center">
-    <span className="text-xs font-bold text-slate-300">
+    <button
+        type="button"
+        onClick={(event) => {
+            event.stopPropagation();
+            setScoreBreakdownModal({ isOpen: true, profile: p, category: 'Cuerpo' });
+        }}
+        className="text-xs font-bold text-slate-300 hover:text-emerald-300 transition-colors"
+        title={`Ver detalle de batallas en Cuerpo de ${p.nombre}`}
+    >
         {getCuerpoScore(p).toFixed(0)}
-    </span>
+    </button>
 </td>
 <td className="px-4 py-5 text-center">
-    <span className="text-xs font-bold text-slate-300">
+    <button
+        type="button"
+        onClick={(event) => {
+            event.stopPropagation();
+            setScoreBreakdownModal({ isOpen: true, profile: p, category: 'Actitud' });
+        }}
+        className="text-xs font-bold text-slate-300 hover:text-emerald-300 transition-colors"
+        title={`Ver detalle de batallas en Actitud de ${p.nombre}`}
+    >
         {getActitudScore(p).toFixed(0)}
-    </span>
+    </button>
 </td>
 
 {/* Ubicación (País y Ciudad) */}
@@ -4044,6 +4150,67 @@ const saveProfile = (e) => {
                     ))}
                 </tbody>
             </table>
+
+            {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
+                const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
+                return (
+                    <div
+                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                        onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                    >
+                        <div
+                            className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <div className="flex items-start justify-between gap-4 mb-6">
+                                <div>
+                                    <h3 className="font-title text-xl font-black text-white tracking-wide">
+                                        {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
+                                    </h3>
+                                    <p className="text-xs text-slate-300 mt-1">
+                                        Detalle de enfrentamientos ganados y perdidos.
+                                    </p>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                                    className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
+                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
+                                    {breakdown.wins.length ? (
+                                        <ul className="space-y-2">
+                                            {breakdown.wins.map((name, idx) => (
+                                                <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
+                                    )}
+                                </div>
+
+                                <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
+                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
+                                    {breakdown.losses.length ? (
+                                        <ul className="space-y-2">
+                                            {breakdown.losses.map((name, idx) => (
+                                                <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
+                                            ))}
+                                        </ul>
+                                    ) : (
+                                        <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     )}
 
