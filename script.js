@@ -592,6 +592,7 @@
                         position: relative;
                         width: 100%;
                         height: 100vh;
+                        height: 100dvh;
                         display: flex;
                         align-items: center;
                         justify-content: center;
@@ -620,6 +621,20 @@
                             0 24px 52px rgba(0, 0, 0, 0.64),
                             0 0 0 3px rgba(83, 55, 27, 0.8),
                             inset 0 0 24px rgba(255, 223, 171, 0.12);
+                    }
+                    .viewer-slide video,
+                    .viewer-slide iframe {
+                        max-width: min(92vw, 1400px);
+                        max-height: calc(100vh - 64px);
+                        width: auto;
+                        height: auto;
+                        border-radius: 24px;
+                        box-shadow: 0 0 40px rgba(34, 211, 238, 0.2);
+                        background: #000;
+                    }
+                    .viewer-slide iframe {
+                        border: 0;
+                        aspect-ratio: 16 / 9;
                     }
                     .viewer-nav {
                         position: fixed;
@@ -709,42 +724,97 @@
                         color: #f5d0fe;
                         background: rgba(192, 38, 211, 0.35);
                     }
-                    @media (max-width: 640px) {
+                    @media (max-width: 768px) {
+                        .fullscreen-viewer {
+                            background: rgba(8, 4, 2, 0.985);
+                        }
                         .viewer-stage {
-                            padding: 20px 16px 106px;
+                            width: 100vw;
+                            height: 100dvh;
+                            min-height: 100dvh;
+                            padding:
+                                calc(env(safe-area-inset-top, 0px) + 76px)
+                                0
+                                calc(env(safe-area-inset-bottom, 0px) + 116px);
+                        }
+                        .viewer-slide {
+                            width: 100vw;
+                            height: 100dvh;
+                        }
+                        .viewer-slide img,
+                        .viewer-slide video,
+                        .viewer-slide iframe {
+                            width: 100vw;
+                            height: 100dvh;
+                            max-width: none;
+                            max-height: none;
+                            min-width: 100vw;
+                            min-height: 100dvh;
+                            object-fit: contain;
+                            border-radius: 0;
+                            border: 0;
+                            box-shadow: none;
+                        }
+                        .viewer-controls {
+                            top: calc(env(safe-area-inset-top, 0px) + 12px);
+                            left: calc(env(safe-area-inset-left, 0px) + 12px);
+                            gap: 10px;
+                        }
+                        .viewer-control-btn {
+                            min-height: 44px;
+                            padding: 10px 14px;
+                            font-size: 10px;
                         }
                         .viewer-close {
-                            top: 14px;
-                            right: 16px;
-                            width: 42px;
-                            height: 42px;
+                            top: calc(env(safe-area-inset-top, 0px) + 12px);
+                            right: calc(env(safe-area-inset-right, 0px) + 12px);
+                            width: 44px;
+                            height: 44px;
+                            font-size: 28px;
                         }
                         .viewer-nav {
-                            bottom: 18px;
-                            width: 40px;
-                            height: 40px;
-                            font-size: 22px;
+                            bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+                            width: 48px;
+                            height: 48px;
+                            font-size: 26px;
                         }
                         .viewer-nav.prev {
-                            left: 16px;
+                            left: calc(env(safe-area-inset-left, 0px) + 12px);
                         }
                         .viewer-nav.next {
-                            right: 16px;
+                            right: calc(env(safe-area-inset-right, 0px) + 12px);
                         }
                         .viewer-hint {
-                            bottom: 20px;
+                            left: 50%;
+                            bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+                            max-width: calc(100vw - 132px);
                             padding: 8px 12px;
+                            font-size: 10px;
+                            text-align: center;
+                        }
+                    }
+                    @media (max-width: 640px) {
+                        .viewer-close {
+                            width: 44px;
+                            height: 44px;
+                        }
+                        .viewer-nav {
+                            width: 44px;
+                            height: 44px;
+                            font-size: 24px;
+                        }
+                        .viewer-hint {
+                            padding: 8px 10px;
                             font-size: 10px;
                             max-width: calc(100vw - 120px);
                             text-align: center;
                         }
                         .viewer-controls {
-                            top: 14px;
-                            left: 14px;
                             gap: 8px;
                         }
                         .viewer-control-btn {
-                            padding: 7px 10px;
+                            min-height: 44px;
+                            padding: 8px 10px;
                             font-size: 9px;
                             letter-spacing: 0.16em;
                         }
@@ -906,8 +976,8 @@
                             <div class="viewer-slide" id="viewer-slide-${index}">
                                 ${itemType === 'video'
                                     ? (embedInfo
-                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" style="width:min(92vw, 1400px); height:min(75vh, 820px); border:0; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
-                                        : `<video src="${foto.url}" controls playsinline style="max-width:min(92vw, 1400px); max-height:calc(100vh - 64px); width:auto; height:auto; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;"></video>`)
+                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
+                                        : `<video src="${foto.url}" controls playsinline></video>`)
                                     : `<img src="${foto.url}" alt="Vista completa ${index + 1}" onerror="${BROKEN_IMAGE_INLINE_HANDLER}" />`
                                 }
                             </div>`;
@@ -927,6 +997,11 @@
                     let viewerAutoplay = false;
                     let viewerRandom = false;
                     let viewerAutoplayTimeout = null;
+                    let viewerScrollTop = 0;
+                    let previousBodyOverflow = '';
+                    let previousBodyPosition = '';
+                    let previousBodyTop = '';
+                    let previousBodyWidth = '';
 
                     function resetAddMediaModalFields() {
                         const urlInput = document.getElementById('nuevaFotoUrl');
@@ -1057,13 +1132,25 @@
                         if (!viewerSlides.length) return;
                         const parsedIndex = Number(index);
                         if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= viewerSlides.length) return;
+                        viewerScrollTop = window.scrollY || window.pageYOffset || 0;
+                        previousBodyOverflow = document.body.style.overflow;
+                        previousBodyPosition = document.body.style.position;
+                        previousBodyTop = document.body.style.top;
+                        previousBodyWidth = document.body.style.width;
                         viewer.classList.add('open');
                         document.body.style.overflow = 'hidden';
+                        document.body.style.position = 'fixed';
+                        document.body.style.top = `-${viewerScrollTop}px`;
+                        document.body.style.width = '100%';
                         renderViewerSlide(parsedIndex);
                     }
                     function closeFullscreenViewer() {
                         viewer.classList.remove('open');
-                        document.body.style.overflow = '';
+                        document.body.style.overflow = previousBodyOverflow;
+                        document.body.style.position = previousBodyPosition;
+                        document.body.style.top = previousBodyTop;
+                        document.body.style.width = previousBodyWidth;
+                        window.scrollTo(0, viewerScrollTop);
                         clearViewerAutoplayTimer();
                     }
                     function showNextViewerPhoto(event) {
@@ -3300,9 +3387,11 @@ const saveProfile = (e) => {
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
                                 { id: 'PERSONAJE', icon: 'user-round-search', label: 'Personaje' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
+                                { id: 'PERSONAJE', icon: 'user', label: 'Personaje' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
                                 { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
-                                { id: 'GALERIA', icon: 'images', label: 'Galería' }
+                                { id: 'GALERIA', icon: 'images', label: 'Galería' },
+                                { id: 'ESCENAS_FOTOS', icon: 'gallery-horizontal', label: 'Escenas/Fotos' }
                             ].map(item => (
                                 <button
                                     key={item.id}
@@ -3311,6 +3400,9 @@ const saveProfile = (e) => {
                                         setSelectedCategory(null);
                                         setSelectedGalleryBucket(null);
                                         setSelectedGalleryIndex(null);
+                                        setSelectedCharacterBucketIds([]);
+                                        setSelectedTagLabels([]);
+                                        setGalleryFilterLabel('INICIAL');
                                     }}
                                     className={`btn-metal sidebar-nav-btn w-full flex items-center gap-4 px-6 py-4 rounded-[2rem] text-sm transition-all ${activeTab === item.id ? 'is-active text-[#ecfeff]' : 'text-slate-900'}`}
                                 >
@@ -3452,107 +3544,15 @@ const saveProfile = (e) => {
                     )}
 
                     {activeTab === 'PERSONAJE' && !selectedCategory && (
-                        <div className="space-y-8 animate-in fade-in duration-500">
-                            <div>
-                                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Personajes</h2>
-                                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Buscá, seleccioná y compará detalle por perfil</p>
-                            </div>
-                            <div className="theme-surface-card rounded-2xl border theme-border-secondary p-5">
-                                <input
-                                    type="text"
-                                    value={characterSearchTerm}
-                                    onChange={(event) => setCharacterSearchTerm(event.target.value)}
-                                    placeholder="Buscar por nombre..."
-                                    className="w-full theme-surface-soft border theme-border-secondary rounded-xl p-3 text-sm text-slate-100 outline-none focus:border-cyan-500"
-                                />
-                            </div>
-                            <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,460px)] gap-8 items-start">
-                                <div className="theme-surface-card rounded-2xl border theme-border-secondary p-5">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                                        {filteredCharacterProfiles.map((p) => {
-                                            const isSelected = selectedCharacterId === p.firebaseId;
-                                            return (
-                                                <button
-                                                    key={p.firebaseId}
-                                                    type="button"
-                                                    onClick={() => setSelectedCharacterId(p.firebaseId)}
-                                                    className={`text-left rounded-xl border p-3 transition-all ${isSelected ? 'border-cyan-400 bg-cyan-900/20' : 'theme-border-secondary bg-slate-950/40 hover:border-cyan-700'}`}
-                                                >
-                                                    <img
-                                                        src={getSafeImageSrc(p?.fotos?.[0], 'https://via.placeholder.com/400x500')}
-                                                        className="w-full h-48 object-cover rounded-lg mb-3"
-                                                        onError={applyCryingEmojiFallback}
-                                                    />
-                                                    <p className="text-sm font-black text-white">{p.nombre || 'Sin nombre'}</p>
-                                                    <p className="text-[11px] text-slate-300 mt-1">{p.profesion || 'Sin profesión'}</p>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                    {!filteredCharacterProfiles.length && (
-                                        <p className="text-sm text-slate-300">No se encontraron personajes para “{characterSearchTerm}”.</p>
-                                    )}
-                                </div>
-                                <div className="theme-surface-card rounded-2xl border theme-border-secondary p-5 sticky top-6">
-                                    {selectedCharacterProfile ? (
-                                        (() => {
-                                            const p = selectedCharacterProfile;
-                                            const profileScores = getProfileScores(p);
-                                            return (
-                                                <div className="space-y-5">
-                                                    <img
-                                                        src={getSafeImageSrc(p?.fotos?.[0], 'https://via.placeholder.com/400x500')}
-                                                        className="w-full h-64 object-cover rounded-xl"
-                                                        onError={applyCryingEmojiFallback}
-                                                    />
-                                                    <div>
-                                                        <h3 className="text-xl font-black text-white">{p.nombre || 'Sin nombre'}</h3>
-                                                        <p className="text-xs text-slate-300 mt-2">
-                                                            {p.profesion || 'Sin profesión'} · {p.nacionalidad || 'Sin nacionalidad'} · {p.ciudad || 'Sin ciudad'} · {calcularEdad(p.fechaNacimiento)} años
-                                                        </p>
-                                                        <p className="text-xs text-[var(--metal-gold)] mt-1">
-                                                            Ranking actual: {selectedCharacterRankingPosition ? `#${selectedCharacterRankingPosition}` : 'Sin posición'}
-                                                        </p>
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="text-xs font-black uppercase tracking-[0.16em] text-slate-300 mb-3">Puntaje por característica</h4>
-                                                        <div className="grid grid-cols-2 gap-2">
-                                                            {CARACTERISTICAS.map((caracteristica) => (
-                                                                <div key={caracteristica} className="rounded-lg border theme-border-secondary bg-slate-950/50 px-3 py-2">
-                                                                    <p className="text-[10px] uppercase tracking-wide text-slate-400">{caracteristica}</p>
-                                                                    <p className="text-sm font-black text-white">{(profileScores[caracteristica] || 0).toFixed(0)}</p>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="text-xs font-black uppercase tracking-[0.16em] text-slate-300 mb-3">Categorías principales</h4>
-                                                        <div className="grid grid-cols-3 gap-2">
-                                                            {[
-                                                                { key: 'Rostro', value: getRostroScore(p) },
-                                                                { key: 'Cuerpo', value: getCuerpoScore(p) },
-                                                                { key: 'Actitud', value: getActitudScore(p) }
-                                                            ].map((item) => (
-                                                                <button
-                                                                    key={item.key}
-                                                                    type="button"
-                                                                    onClick={() => setScoreBreakdownModal({ isOpen: true, profile: p, category: item.key })}
-                                                                    className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 px-2 py-3 hover:border-emerald-400 transition-colors"
-                                                                    title={`Ver batallas ganadas y perdidas de ${p.nombre} en ${item.key}`}
-                                                                >
-                                                                    <p className="text-[10px] uppercase text-emerald-300">{item.key}</p>
-                                                                    <p className="text-base font-black text-white">{item.value.toFixed(0)}</p>
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            );
-                                        })()
-                                    ) : (
-                                        <p className="text-sm text-slate-300">Seleccioná un personaje para ver su detalle.</p>
-                                    )}
-                                </div>
+                        <div className="theme-surface-card gothic-frame gothic-frame--ornate rounded-[2rem] p-8 md:p-10 animate-in fade-in duration-500">
+                            <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Personaje</h2>
+                            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-2">
+                                Espacio listo para construir la vista de personaje con el estilo actual.
+                            </p>
+                            <div className="mt-8">
+                                <button type="button" className="btn-metal btn-metal--gold px-6 py-3 rounded-2xl text-xs">
+                                    Próximamente
+                                </button>
                             </div>
                         </div>
                     )}
@@ -4296,6 +4296,20 @@ const saveProfile = (e) => {
                     </div>
                 </div>
             )}
+        </div>
+    )}
+
+    {activeTab === 'ESCENAS_FOTOS' && !selectedCategory && (
+        <div className="theme-surface-card gothic-frame gothic-frame--ornate rounded-[2rem] p-8 md:p-10 animate-in fade-in duration-500">
+            <h2 className="neon-sign neon-sign--magenta text-4xl font-black italic text-white uppercase tracking-tighter">Escenas/Fotos</h2>
+            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-2">
+                Nuevo bloque preparado para escenas multimedia sin afectar los tabs existentes.
+            </p>
+            <div className="mt-8">
+                <button type="button" className="btn-metal btn-metal--silver px-6 py-3 rounded-2xl text-xs text-slate-900">
+                    Configurar contenido
+                </button>
+            </div>
         </div>
     )}
 
