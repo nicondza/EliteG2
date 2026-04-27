@@ -146,6 +146,7 @@
         };
         const VIDEO_FILE_REGEX = /\.(mp4|webm|ogg|mov|m4v)(\?.*)?$/i;
         const GIF_FILE_REGEX = /\.gif(\?.*)?$/i;
+        const SCENE_FREE_CATEGORIES = ['General', 'Acción', 'Romántica', 'NSFW'];
         const YOUTUBE_REGEX = /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/i;
         const VIMEO_REGEX = /vimeo\.com\/(?:video\/)?(\d+)/i;
         const getVideoEmbedInfo = (url) => {
@@ -1385,6 +1386,10 @@
             const [urlInput, setUrlInput] = useState('');
             const [galleryLabel, setGalleryLabel] = useState(GALLERY_LABELS[0]);
             const [galleryMediaType, setGalleryMediaType] = useState('image');
+            const [sceneUrlInput, setSceneUrlInput] = useState('');
+            const [sceneFileInput, setSceneFileInput] = useState('');
+            const [sceneCategory, setSceneCategory] = useState('');
+            const [sceneType, setSceneType] = useState('image');
             const [galleryFilterLabel, setGalleryFilterLabel] = useState('INICIAL');
             const [galleryViewMode, setGalleryViewMode] = useState('GENERAL');
             const [selectedGalleryIndex, setSelectedGalleryIndex] = useState(null);
@@ -1684,6 +1689,69 @@ const getInitialCatFormData = () => ({
                     console.error('Error al cargar archivo local de galería:', error);
                 } finally {
                     event.target.value = '';
+                }
+            };
+            const handleLocalSceneFileUpload = async (event) => {
+                const selectedFile = event.target.files?.[0];
+                if (!selectedFile) return;
+                try {
+                    const dataUrl = await readFileAsDataUrl(selectedFile);
+                    const mimeType = String(selectedFile.type || '').toLowerCase();
+                    const inferredType = mimeType.includes('gif')
+                        ? 'gif'
+                        : mimeType.startsWith('video/')
+                            ? 'video'
+                            : 'image';
+                    setSceneFileInput(dataUrl);
+                    setSceneType(inferredType);
+                } catch (error) {
+                    console.error('Error al cargar archivo local de escena:', error);
+                    alert('No se pudo leer el archivo seleccionado.');
+                } finally {
+                    event.target.value = '';
+                }
+            };
+            const sceneCategoryOptions = useMemo(() => {
+                const existingCategoryLabels = (categorias || [])
+                    .map((category) => String(category?.label || '').trim())
+                    .filter(Boolean);
+                return [...new Set([...existingCategoryLabels, ...SCENE_FREE_CATEGORIES])];
+            }, [categorias]);
+            const submitScenePhoto = async () => {
+                const normalizedUrlInput = String(sceneUrlInput || '').trim();
+                const normalizedFileInput = String(sceneFileInput || '').trim();
+                const finalUrl = normalizedUrlInput || normalizedFileInput;
+                const normalizedCategory = String(sceneCategory || '').trim();
+                const normalizedType = String(sceneType || '').trim();
+
+                if (!finalUrl) {
+                    alert('Ingresá una URL o cargá un archivo para la escena.');
+                    return;
+                }
+                if (!normalizedCategory) {
+                    alert('Seleccioná una categoría para la escena.');
+                    return;
+                }
+                if (!normalizedType) {
+                    alert('Seleccioná el tipo de escena.');
+                    return;
+                }
+
+                try {
+                    await db.ref('escenasFotos').push({
+                        url: finalUrl,
+                        categoria: normalizedCategory,
+                        type: normalizedType,
+                        createdAt: firebase.database.ServerValue.TIMESTAMP
+                    });
+                    setSceneUrlInput('');
+                    setSceneFileInput('');
+                    setSceneCategory('');
+                    setSceneType('image');
+                    alert('¡Escena guardada correctamente!');
+                } catch (error) {
+                    console.error('Error al guardar escena en Firebase:', error);
+                    alert('No se pudo guardar la escena. Probá de nuevo.');
                 }
             };
             const handleDelete = async (id, e) => {
