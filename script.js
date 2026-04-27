@@ -1143,7 +1143,6 @@
             const [selectedCategory, setSelectedCategory] = React.useState(null);
             const [contextMenuOpen, setContextMenuOpen] = useState(false);
             const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
-            const [contextProfile, setContextProfile] = useState(null);
             const [sortBy, setSortBy] = useState('promedio');
             const [sortDirection, setSortDirection] = useState('desc');
             const [urlInput, setUrlInput] = useState('');
