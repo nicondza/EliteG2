@@ -585,6 +585,7 @@
                         position: relative;
                         width: 100%;
                         height: 100vh;
+                        height: 100dvh;
                         display: flex;
                         align-items: center;
                         justify-content: center;
@@ -613,6 +614,20 @@
                             0 24px 52px rgba(0, 0, 0, 0.64),
                             0 0 0 3px rgba(83, 55, 27, 0.8),
                             inset 0 0 24px rgba(255, 223, 171, 0.12);
+                    }
+                    .viewer-slide video,
+                    .viewer-slide iframe {
+                        max-width: min(92vw, 1400px);
+                        max-height: calc(100vh - 64px);
+                        width: auto;
+                        height: auto;
+                        border-radius: 24px;
+                        box-shadow: 0 0 40px rgba(34, 211, 238, 0.2);
+                        background: #000;
+                    }
+                    .viewer-slide iframe {
+                        border: 0;
+                        aspect-ratio: 16 / 9;
                     }
                     .viewer-nav {
                         position: fixed;
@@ -702,42 +717,97 @@
                         color: #f5d0fe;
                         background: rgba(192, 38, 211, 0.35);
                     }
-                    @media (max-width: 640px) {
+                    @media (max-width: 768px) {
+                        .fullscreen-viewer {
+                            background: rgba(8, 4, 2, 0.985);
+                        }
                         .viewer-stage {
-                            padding: 20px 16px 106px;
+                            width: 100vw;
+                            height: 100dvh;
+                            min-height: 100dvh;
+                            padding:
+                                calc(env(safe-area-inset-top, 0px) + 76px)
+                                0
+                                calc(env(safe-area-inset-bottom, 0px) + 116px);
+                        }
+                        .viewer-slide {
+                            width: 100vw;
+                            height: 100dvh;
+                        }
+                        .viewer-slide img,
+                        .viewer-slide video,
+                        .viewer-slide iframe {
+                            width: 100vw;
+                            height: 100dvh;
+                            max-width: none;
+                            max-height: none;
+                            min-width: 100vw;
+                            min-height: 100dvh;
+                            object-fit: contain;
+                            border-radius: 0;
+                            border: 0;
+                            box-shadow: none;
+                        }
+                        .viewer-controls {
+                            top: calc(env(safe-area-inset-top, 0px) + 12px);
+                            left: calc(env(safe-area-inset-left, 0px) + 12px);
+                            gap: 10px;
+                        }
+                        .viewer-control-btn {
+                            min-height: 44px;
+                            padding: 10px 14px;
+                            font-size: 10px;
                         }
                         .viewer-close {
-                            top: 14px;
-                            right: 16px;
-                            width: 42px;
-                            height: 42px;
+                            top: calc(env(safe-area-inset-top, 0px) + 12px);
+                            right: calc(env(safe-area-inset-right, 0px) + 12px);
+                            width: 44px;
+                            height: 44px;
+                            font-size: 28px;
                         }
                         .viewer-nav {
-                            bottom: 18px;
-                            width: 40px;
-                            height: 40px;
-                            font-size: 22px;
+                            bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+                            width: 48px;
+                            height: 48px;
+                            font-size: 26px;
                         }
                         .viewer-nav.prev {
-                            left: 16px;
+                            left: calc(env(safe-area-inset-left, 0px) + 12px);
                         }
                         .viewer-nav.next {
-                            right: 16px;
+                            right: calc(env(safe-area-inset-right, 0px) + 12px);
                         }
                         .viewer-hint {
-                            bottom: 20px;
+                            left: 50%;
+                            bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+                            max-width: calc(100vw - 132px);
                             padding: 8px 12px;
+                            font-size: 10px;
+                            text-align: center;
+                        }
+                    }
+                    @media (max-width: 640px) {
+                        .viewer-close {
+                            width: 44px;
+                            height: 44px;
+                        }
+                        .viewer-nav {
+                            width: 44px;
+                            height: 44px;
+                            font-size: 24px;
+                        }
+                        .viewer-hint {
+                            padding: 8px 10px;
                             font-size: 10px;
                             max-width: calc(100vw - 120px);
                             text-align: center;
                         }
                         .viewer-controls {
-                            top: 14px;
-                            left: 14px;
                             gap: 8px;
                         }
                         .viewer-control-btn {
-                            padding: 7px 10px;
+                            min-height: 44px;
+                            padding: 8px 10px;
                             font-size: 9px;
                             letter-spacing: 0.16em;
                         }
@@ -899,8 +969,8 @@
                             <div class="viewer-slide" id="viewer-slide-${index}">
                                 ${itemType === 'video'
                                     ? (embedInfo
-                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" style="width:min(92vw, 1400px); height:min(75vh, 820px); border:0; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
-                                        : `<video src="${foto.url}" controls playsinline style="max-width:min(92vw, 1400px); max-height:calc(100vh - 64px); width:auto; height:auto; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;"></video>`)
+                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
+                                        : `<video src="${foto.url}" controls playsinline></video>`)
                                     : `<img src="${foto.url}" alt="Vista completa ${index + 1}" onerror="${BROKEN_IMAGE_INLINE_HANDLER}" />`
                                 }
                             </div>`;
@@ -920,6 +990,11 @@
                     let viewerAutoplay = false;
                     let viewerRandom = false;
                     let viewerAutoplayTimeout = null;
+                    let viewerScrollTop = 0;
+                    let previousBodyOverflow = '';
+                    let previousBodyPosition = '';
+                    let previousBodyTop = '';
+                    let previousBodyWidth = '';
 
                     function resetAddMediaModalFields() {
                         const urlInput = document.getElementById('nuevaFotoUrl');
@@ -1050,13 +1125,25 @@
                         if (!viewerSlides.length) return;
                         const parsedIndex = Number(index);
                         if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= viewerSlides.length) return;
+                        viewerScrollTop = window.scrollY || window.pageYOffset || 0;
+                        previousBodyOverflow = document.body.style.overflow;
+                        previousBodyPosition = document.body.style.position;
+                        previousBodyTop = document.body.style.top;
+                        previousBodyWidth = document.body.style.width;
                         viewer.classList.add('open');
                         document.body.style.overflow = 'hidden';
+                        document.body.style.position = 'fixed';
+                        document.body.style.top = `-${viewerScrollTop}px`;
+                        document.body.style.width = '100%';
                         renderViewerSlide(parsedIndex);
                     }
                     function closeFullscreenViewer() {
                         viewer.classList.remove('open');
-                        document.body.style.overflow = '';
+                        document.body.style.overflow = previousBodyOverflow;
+                        document.body.style.position = previousBodyPosition;
+                        document.body.style.top = previousBodyTop;
+                        document.body.style.width = previousBodyWidth;
+                        window.scrollTo(0, viewerScrollTop);
                         clearViewerAutoplayTimer();
                     }
                     function showNextViewerPhoto(event) {
