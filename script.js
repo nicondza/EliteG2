@@ -215,6 +215,21 @@
             }
             return { url: '', label: '', type: detectGalleryItemType('', fallbackType) };
         };
+        const normalizeGlobalMediaItem = (itemId, item) => {
+            const rawItem = item && typeof item === 'object' ? item : {};
+            const safeUrl = getSafeImageSrc((rawItem.url || '').trim(), '');
+            const detectedType = detectGalleryItemType(safeUrl, rawItem.type || '');
+            const embedInfo = detectedType === 'video' ? getVideoEmbedInfo(safeUrl) : null;
+            return {
+                id: String(itemId || ''),
+                url: safeUrl,
+                type: detectedType,
+                category: rawItem.category || '',
+                createdAt: rawItem.createdAt || 0,
+                source: rawItem.source === 'file' ? 'file' : 'url',
+                embedInfo
+            };
+        };
         const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
         const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
         const getGalleryItemType = (item) => normalizeGalleryItem(item).type;
@@ -1159,6 +1174,7 @@
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
             const [arenaBattleState, setArenaBattleState] = useState({});
             const [arenaGlobalState, setArenaGlobalState] = useState({});
+            const [globalMedia, setGlobalMedia] = useState([]);
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
@@ -1655,6 +1671,14 @@ const getInitialCatFormData = () => ({
                 arenaGlobalRef.on('value', (snapshot) => {
                     setArenaGlobalState(snapshot.val() || {});
                 });
+                const escenasFotosRef = db.ref('escenasFotos');
+                escenasFotosRef.on('value', (snapshot) => {
+                    const data = snapshot.val() || {};
+                    const normalizedMedia = Object.entries(data)
+                        .map(([itemId, item]) => normalizeGlobalMediaItem(itemId, item))
+                        .filter((item) => item.url);
+                    setGlobalMedia(normalizedMedia);
+                });
 
                 return () => {
                     window.removeEventListener('message', handleMessage);
@@ -1662,6 +1686,7 @@ const getInitialCatFormData = () => ({
                     categoriasRef.off();
                     arenasRef.off();
                     arenaGlobalRef.off();
+                    escenasFotosRef.off();
                 };
             }, []);
 
@@ -1740,7 +1765,7 @@ const getInitialCatFormData = () => ({
                 }, {});
             }, [perfiles, categorias]);
             const allGalleryPhotos = useMemo(() => {
-                return (perfiles || []).flatMap((perfil) => {
+                const profileGalleryPhotos = (perfiles || []).flatMap((perfil) => {
                     const galleryItems = [
                         ...(Array.isArray(perfil?.galeria?.fotos)
                             ? perfil.galeria.fotos.map((item, sourceIndex) => ({
@@ -1787,7 +1812,32 @@ const getInitialCatFormData = () => ({
                         })
                         .filter(Boolean);
                 });
-            }, [perfiles]);
+                const sharedGlobalMediaPhotos = (globalMedia || [])
+                    .map((item, index) => {
+                        if (!item?.url) return null;
+                        const type = detectGalleryItemType(item.url, item.type || '');
+                        const embedInfo = type === 'video' ? (item.embedInfo || getVideoEmbedInfo(item.url)) : null;
+                        return {
+                            id: `escenasFotos-${item.id || index}`,
+                            url: item.url,
+                            label: '',
+                            type,
+                            isGif: type === 'image' && isGifUrl(item.url),
+                            nombre: item.category ? `Escena · ${item.category}` : 'Escena global',
+                            profesion: item.source === 'file' ? 'Escena (archivo)' : 'Escena (url)',
+                            nacionalidad: '',
+                            fotoPerfil: item.url,
+                            profileId: null,
+                            sourceTag: 'escenasFotos',
+                            sourceIndex: index,
+                            createdAt: item.createdAt || 0,
+                            embedInfo
+                        };
+                    })
+                    .filter(Boolean);
+
+                return [...profileGalleryPhotos, ...sharedGlobalMediaPhotos];
+            }, [perfiles, globalMedia]);
             const galleryBuckets = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') {
                     return [{
