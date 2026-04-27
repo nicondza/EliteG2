@@ -218,6 +218,34 @@
         const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
         const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
         const getGalleryItemType = (item) => normalizeGalleryItem(item).type;
+        const checkImageUrlIsBroken = (url = '', timeoutMs = 7000) => new Promise((resolve) => {
+            const normalizedUrl = String(url || '').trim();
+            if (!normalizedUrl) {
+                resolve(true);
+                return;
+            }
+
+            const image = new Image();
+            let settled = false;
+            const finalize = (isBroken) => {
+                if (settled) return;
+                settled = true;
+                image.onload = null;
+                image.onerror = null;
+                resolve(Boolean(isBroken));
+            };
+
+            const timeoutId = window.setTimeout(() => finalize(true), timeoutMs);
+            image.onload = () => {
+                clearTimeout(timeoutId);
+                finalize(false);
+            };
+            image.onerror = () => {
+                clearTimeout(timeoutId);
+                finalize(true);
+            };
+            image.src = normalizedUrl;
+        });
         const getBattlePhotoForArena = (profile, arenaName) => {
             const normalizedArena = (arenaName || '').trim().toLowerCase();
             const galleryImages = Array.isArray(profile?.galeria?.fotos)
@@ -1098,6 +1126,10 @@
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
             const [isEditingGalleryLabel, setIsEditingGalleryLabel] = useState(false);
             const [galleryLabelDraft, setGalleryLabelDraft] = useState('');
+            const [isBrokenGalleryModalOpen, setIsBrokenGalleryModalOpen] = useState(false);
+            const [brokenGalleryMap, setBrokenGalleryMap] = useState({});
+            const [brokenGalleryUrlDrafts, setBrokenGalleryUrlDrafts] = useState({});
+            const [brokenGallerySavingMap, setBrokenGallerySavingMap] = useState({});
             const galleryPlaybackTimeoutRef = useRef(null);
 
             const [filters, setFilters] = useState({
@@ -1208,6 +1240,85 @@ const getInitialCatFormData = () => ({
                             ...(prev.galeria || { fotos: [], gifs: [], videos: [] }),
                             [sourceTag]: updatedItems
                         }
+                    }));
+                }
+            };
+            const updateGalleryItemUrl = async ({ profileId, sourceTag, sourceIndex, url }) => {
+                if (!profileId || !sourceTag || !Number.isInteger(sourceIndex)) return;
+                const normalizedUrl = (url || '').trim();
+                if (!normalizedUrl) return;
+
+                const galleryRef = db.ref(`perfiles/${profileId}/galeria/${sourceTag}`);
+                const snapshot = await galleryRef.once('value');
+                const currentItems = Array.isArray(snapshot.val()) ? snapshot.val() : [];
+                if (!currentItems[sourceIndex]) return;
+
+                const updatedItems = [...currentItems];
+                const currentType = sourceTag === 'videos' ? 'video' : 'image';
+                const normalizedItem = normalizeGalleryItem(updatedItems[sourceIndex], currentType);
+                updatedItems[sourceIndex] = {
+                    ...normalizedItem,
+                    url: normalizedUrl,
+                    type: detectGalleryItemType(normalizedUrl, currentType)
+                };
+                await galleryRef.set(updatedItems);
+
+                if (profileId === editingId) {
+                    setFormData(prev => ({
+                        ...prev,
+                        galeria: {
+                            ...(prev.galeria || { fotos: [], gifs: [], videos: [] }),
+                            [sourceTag]: updatedItems
+                        }
+                    }));
+                }
+            };
+            const removeGalleryItem = async ({ profileId, sourceTag, sourceIndex }) => {
+                if (!profileId || !sourceTag || !Number.isInteger(sourceIndex)) return;
+                const galleryRef = db.ref(`perfiles/${profileId}/galeria/${sourceTag}`);
+                const snapshot = await galleryRef.once('value');
+                const currentItems = Array.isArray(snapshot.val()) ? snapshot.val() : [];
+                const removedItem = currentItems[sourceIndex];
+                if (!removedItem) return;
+
+                const remainingItems = currentItems.filter((_, index) => index !== sourceIndex);
+                await galleryRef.set(remainingItems);
+
+                const removedUrl = normalizeGalleryItem(removedItem, sourceTag === 'videos' ? 'video' : 'image').url;
+                if (removedUrl) {
+                    const prefsRef = db.ref(`perfiles/${profileId}/batallaFotosPreferidas`);
+                    const prefsSnapshot = await prefsRef.once('value');
+                    const currentPrefs = sanitizeBattlePhotoPreferences(prefsSnapshot.val());
+                    const updatedPrefs = { ...currentPrefs };
+                    let hasChanges = false;
+
+                    Object.keys(updatedPrefs).forEach((slotId) => {
+                        if (updatedPrefs[slotId] === removedUrl) {
+                            updatedPrefs[slotId] = '';
+                            hasChanges = true;
+                        }
+                    });
+                    if (hasChanges) await prefsRef.set(updatedPrefs);
+                }
+
+                if (profileId === editingId) {
+                    setFormData(prev => ({
+                        ...prev,
+                        galeria: {
+                            ...(prev.galeria || { fotos: [], gifs: [], videos: [] }),
+                            [sourceTag]: remainingItems
+                        },
+                        batallaFotosPreferidas: (() => {
+                            const currentPrefs = sanitizeBattlePhotoPreferences(prev.batallaFotosPreferidas);
+                            if (!removedUrl) return currentPrefs;
+                            const updatedPrefs = { ...currentPrefs };
+                            Object.keys(updatedPrefs).forEach((slotId) => {
+                                if (updatedPrefs[slotId] === removedUrl) {
+                                    updatedPrefs[slotId] = '';
+                                }
+                            });
+                            return updatedPrefs;
+                        })()
                     }));
                 }
             };
@@ -1672,6 +1783,32 @@ const getInitialCatFormData = () => ({
             const selectedGalleryPhoto = selectedGalleryIndex === null
                 ? null
                 : filteredGalleryPhotos[clampIndex(selectedGalleryIndex, filteredGalleryPhotos.length)] || null;
+            const brokenGalleryPhotos = useMemo(() => {
+                return allGalleryPhotos.filter((photo) => photo.type === 'image' && brokenGalleryMap[photo.id]);
+            }, [allGalleryPhotos, brokenGalleryMap]);
+            const brokenGalleryGroups = useMemo(() => {
+                const grouped = brokenGalleryPhotos.reduce((acc, photo) => {
+                    const key = photo.profileId || photo.nombre || 'sin-perfil';
+                    if (!acc[key]) {
+                        acc[key] = {
+                            id: key,
+                            nombre: photo.nombre || 'Sin nombre',
+                            profesion: photo.profesion || 'Perfil',
+                            nacionalidad: photo.nacionalidad || '',
+                            fotos: []
+                        };
+                    }
+                    acc[key].fotos.push(photo);
+                    return acc;
+                }, {});
+
+                return Object.values(grouped)
+                    .map((group) => ({
+                        ...group,
+                        fotos: group.fotos.sort((a, b) => (a.label || '').localeCompare(b.label || '', 'es', { sensitivity: 'base' }))
+                    }))
+                    .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es', { sensitivity: 'base' }));
+            }, [brokenGalleryPhotos]);
 
             useEffect(() => {
                 if (!selectedGalleryPhoto) {
@@ -1740,6 +1877,41 @@ const getInitialCatFormData = () => ({
                     setIsGalleryRandom(false);
                 }
             }, [selectedGalleryIndex]);
+            useEffect(() => {
+                let isCancelled = false;
+                const imagePhotos = allGalleryPhotos.filter((photo) => photo.type === 'image' && photo.url);
+
+                if (!imagePhotos.length) {
+                    setBrokenGalleryMap({});
+                    return;
+                }
+
+                const run = async () => {
+                    const results = await Promise.all(imagePhotos.map(async (photo) => ({
+                        id: photo.id,
+                        isBroken: await checkImageUrlIsBroken(photo.url)
+                    })));
+
+                    if (isCancelled) return;
+
+                    const nextMap = results.reduce((acc, entry) => {
+                        acc[entry.id] = entry.isBroken;
+                        return acc;
+                    }, {});
+                    setBrokenGalleryMap(nextMap);
+                };
+
+                run();
+                return () => { isCancelled = true; };
+            }, [allGalleryPhotos]);
+            useEffect(() => {
+                if (!isBrokenGalleryModalOpen) return;
+                const nextDrafts = brokenGalleryPhotos.reduce((acc, photo) => {
+                    acc[photo.id] = photo.url;
+                    return acc;
+                }, {});
+                setBrokenGalleryUrlDrafts(nextDrafts);
+            }, [isBrokenGalleryModalOpen, brokenGalleryPhotos]);
 
             useEffect(() => {
                 if (galleryPlaybackTimeoutRef.current) {
@@ -1802,6 +1974,48 @@ const getInitialCatFormData = () => ({
                     setIsEditingGalleryLabel(false);
                 } catch (error) {
                     console.error('Error al actualizar etiqueta de la multimedia:', error);
+                }
+            };
+            const handleBrokenDraftChange = (photoId, nextUrl) => {
+                setBrokenGalleryUrlDrafts((current) => ({ ...current, [photoId]: nextUrl }));
+            };
+            const saveBrokenGalleryPhotoUrl = async (photo) => {
+                if (!photo) return;
+                const nextUrl = (brokenGalleryUrlDrafts[photo.id] || '').trim();
+                if (!nextUrl || nextUrl === photo.url) return;
+
+                setBrokenGallerySavingMap((current) => ({ ...current, [photo.id]: true }));
+                try {
+                    await updateGalleryItemUrl({
+                        profileId: photo.profileId,
+                        sourceTag: photo.sourceTag,
+                        sourceIndex: photo.sourceIndex,
+                        url: nextUrl
+                    });
+                    const isBroken = await checkImageUrlIsBroken(nextUrl);
+                    setBrokenGalleryMap((current) => ({ ...current, [photo.id]: isBroken }));
+                } catch (error) {
+                    console.error('Error al actualizar URL rota:', error);
+                } finally {
+                    setBrokenGallerySavingMap((current) => ({ ...current, [photo.id]: false }));
+                }
+            };
+            const deleteBrokenGalleryPhoto = async (photo) => {
+                if (!photo) return;
+                const confirmed = window.confirm('¿Eliminar esta foto rota de la galería?');
+                if (!confirmed) return;
+
+                setBrokenGallerySavingMap((current) => ({ ...current, [photo.id]: true }));
+                try {
+                    await removeGalleryItem({
+                        profileId: photo.profileId,
+                        sourceTag: photo.sourceTag,
+                        sourceIndex: photo.sourceIndex
+                    });
+                } catch (error) {
+                    console.error('Error al eliminar foto rota:', error);
+                } finally {
+                    setBrokenGallerySavingMap((current) => ({ ...current, [photo.id]: false }));
                 }
             };
             const galleryContextLabel = useMemo(() => {
@@ -2714,6 +2928,15 @@ const saveProfile = (e) => {
                             {GALLERY_VIEW_MODE_LABELS[mode]}
                         </button>
                     ))}
+                    <button
+                        type="button"
+                        onClick={() => setIsBrokenGalleryModalOpen(true)}
+                        className="btn-metal btn-metal--danger px-4 py-2 rounded-full text-[10px] tracking-[0.08em] inline-flex items-center gap-2"
+                        title="Ver y corregir fotos rotas"
+                    >
+                        <span className="text-sm leading-none">💔</span>
+                        Rotas ({brokenGalleryPhotos.length})
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -3153,6 +3376,95 @@ const saveProfile = (e) => {
                                     </button>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isBrokenGalleryModalOpen && (
+                <div className="fixed inset-0 z-[130] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={() => setIsBrokenGalleryModalOpen(false)}>
+                    <div className="w-full max-w-6xl max-h-full theme-surface-card border theme-border-secondary rounded-[2rem] p-5 sm:p-6 overflow-hidden" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex items-center justify-between gap-4 mb-5">
+                            <div>
+                                <p className="text-2xl font-black italic text-white tracking-tighter">Fotos rotas</p>
+                                <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[var(--metal-gold)] mt-2">
+                                    {brokenGalleryPhotos.length} enlace{brokenGalleryPhotos.length === 1 ? '' : 's'} sin vista
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setIsBrokenGalleryModalOpen(false)}
+                                className="btn-metal btn-metal--danger w-11 h-11 rounded-full flex items-center justify-center"
+                                aria-label="Cerrar revisión de fotos rotas"
+                            >
+                                <span className="text-xl font-black leading-none">✕</span>
+                            </button>
+                        </div>
+
+                        <div className="max-h-[70vh] overflow-y-auto pr-1 space-y-6">
+                            {!brokenGalleryGroups.length ? (
+                                <div className="theme-surface-soft rounded-2xl border theme-border-secondary p-6 text-center">
+                                    <p className="text-sm font-semibold text-white">No se detectaron fotos rotas ahora mismo.</p>
+                                </div>
+                            ) : brokenGalleryGroups.map((group) => (
+                                <section key={group.id} className="theme-surface-soft rounded-2xl border theme-border-secondary p-4 sm:p-5">
+                                    <div className="mb-4">
+                                        <p className="text-lg font-black italic text-white tracking-tight">{group.nombre}</p>
+                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-slate-400 mt-1">
+                                            {group.profesion}{group.nacionalidad ? ` · ${group.nacionalidad}` : ''}
+                                        </p>
+                                    </div>
+
+                                    <div className="space-y-3">
+                                        {group.fotos.map((photo) => {
+                                            const isSaving = !!brokenGallerySavingMap[photo.id];
+                                            const draftUrl = brokenGalleryUrlDrafts[photo.id] ?? photo.url;
+                                            return (
+                                                <article key={photo.id} className="grid grid-cols-1 lg:grid-cols-[90px_1fr_auto] gap-3 p-3 rounded-xl border theme-border-secondary bg-slate-950/40">
+                                                    <div className="w-[90px] h-[90px] rounded-lg overflow-hidden border theme-border-secondary bg-slate-900 flex items-center justify-center">
+                                                        <img src={CRYING_EMOJI_FALLBACK} alt="Vista previa rota" className="w-full h-full object-cover" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            <span className="text-[10px] px-2 py-1 rounded-full border theme-border-secondary bg-slate-900/85 font-black uppercase tracking-[0.16em] text-slate-200">
+                                                                Etiqueta: {photo.label || 'Sin etiqueta'}
+                                                            </span>
+                                                            <span className="text-[10px] px-2 py-1 rounded-full border theme-border-secondary bg-slate-900/85 font-black uppercase tracking-[0.16em] text-slate-400">
+                                                                {photo.sourceTag}
+                                                            </span>
+                                                        </div>
+                                                        <input
+                                                            type="url"
+                                                            value={draftUrl}
+                                                            onChange={(event) => handleBrokenDraftChange(photo.id, event.target.value)}
+                                                            placeholder="https://..."
+                                                            className="w-full bg-slate-900 border theme-border-secondary rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[var(--metal-gold)]"
+                                                        />
+                                                    </div>
+                                                    <div className="flex lg:flex-col gap-2 lg:justify-center">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => saveBrokenGalleryPhotoUrl(photo)}
+                                                            disabled={isSaving}
+                                                            className="btn-metal btn-metal--gold px-3 py-2 rounded-xl text-[10px] disabled:opacity-60"
+                                                        >
+                                                            Guardar URL
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => deleteBrokenGalleryPhoto(photo)}
+                                                            disabled={isSaving}
+                                                            className="btn-metal btn-metal--danger px-3 py-2 rounded-xl text-[10px] disabled:opacity-60"
+                                                        >
+                                                            Eliminar
+                                                        </button>
+                                                    </div>
+                                                </article>
+                                            );
+                                        })}
+                                    </div>
+                                </section>
+                            ))}
                         </div>
                     </div>
                 </div>
