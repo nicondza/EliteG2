@@ -353,18 +353,17 @@ button::before,
     inset: 0;
     pointer-events: none;
     background:
-        linear-gradient(120deg, transparent 18%, rgba(255,255,255,0.46) 28%, transparent 40%),
-        repeating-linear-gradient(130deg, rgba(255,255,255,0.1) 0 2px, transparent 2px 7px);
-    opacity: 0.4;
-    transform: translateX(-110%);
-    transition: transform 420ms ease, opacity 220ms ease;
+        linear-gradient(180deg, rgba(255,255,255,0.26) 0%, rgba(255,255,255,0.08) 38%, rgba(15,23,42,0.28) 100%),
+        linear-gradient(90deg, rgba(226,232,240,0.1) 0%, rgba(148,163,184,0.18) 50%, rgba(51,65,85,0.16) 100%);
+    opacity: 0.88;
+    transition: opacity 220ms ease, filter 220ms ease;
 }
 
 button:hover::before,
 .btn-metal:hover::before,
 .btn-neon:hover::before {
-    transform: translateX(110%);
-    opacity: 0.8;
+    opacity: 1;
+    filter: brightness(1.06);
 }
 
 button:hover,
@@ -380,12 +379,11 @@ button:hover,
 }
 
 .metal-btn-3d {
-    border: 1px solid color-mix(in srgb, var(--metal-chrome) 50%, var(--metal-shadow) 50%);
+    border: 1px solid color-mix(in srgb, var(--metal-chrome) 56%, var(--metal-shadow) 44%);
     background:
-        radial-gradient(circle at 18% 16%, rgba(255, 255, 255, 0.34), transparent 34%),
-        repeating-linear-gradient(90deg, rgba(255,255,255,0.08) 0 1px, transparent 1px 6px),
-        linear-gradient(165deg, color-mix(in srgb, var(--metal-shadow) 74%, #0f172a 26%), color-mix(in srgb, var(--metal-steel) 40%, #1e293b 60%));
-    box-shadow: inset 0 1px 0 rgba(255,255,255,0.26), inset 0 -12px 20px rgba(2,6,23,0.54), 0 10px 16px rgba(2, 6, 23, 0.45);
+        linear-gradient(180deg, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.12) 22%, rgba(15,23,42,0.42) 100%),
+        linear-gradient(90deg, color-mix(in srgb, var(--metal-chrome) 26%, #334155 74%) 0%, color-mix(in srgb, var(--metal-steel) 54%, #1e293b 46%) 48%, color-mix(in srgb, var(--metal-shadow) 70%, #0f172a 30%) 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.34), inset 0 -12px 20px rgba(2,6,23,0.58), 0 10px 16px rgba(2, 6, 23, 0.45);
 }
 
 .metal-card-3d {
