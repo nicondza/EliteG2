@@ -1183,7 +1183,7 @@
                         viewer.classList.add('open');
                         document.body.style.overflow = 'hidden';
                         document.body.style.position = 'fixed';
-                        document.body.style.top = ['-', viewerScrollTop, 'px'].join('');
+                        document.body.style.top = '-' + String(viewerScrollTop) + 'px';
                         document.body.style.width = '100%';
                         renderViewerSlide(parsedIndex);
                     }
