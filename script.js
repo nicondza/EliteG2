@@ -333,11 +333,12 @@
             const scope = BATTLE_SCOPES.find((item) => item.id === scopeId);
             return scope?.label || 'General';
         };
-        const getArenaBattleKey = (arenaName, scopeId = 'GENERAL') => {
+        const getArenaBattleKey = (arenaName, scopeId = 'GENERAL', groupKey = '') => {
             const safeArena = String(arenaName || '').trim();
             const safeScope = String(scopeId || 'GENERAL').trim().toUpperCase();
+            const safeGroup = String(groupKey || '').trim().toLowerCase();
             if (!safeArena) return '';
-            return `${safeScope}::${safeArena}`;
+            return `${safeScope}::${safeGroup || 'all'}::${safeArena}`;
         };
         const createZeroScores = () => CARACTERISTICAS.reduce((acc, item) => {
             acc[item] = 0;
@@ -1138,8 +1139,8 @@
             const [activeTab, setActiveTab] = useState('EXPLORAR');
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
+            const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
             const [arenaBattleState, setArenaBattleState] = useState({});
-            const [arenaParticipantMode, setArenaParticipantMode] = useState('GENERAL');
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
@@ -1209,7 +1210,16 @@ const getInitialCatFormData = () => ({
                 batallaFotosPreferidas: getDefaultBattlePhotoPreferences(),
                 puntuaciones: createZeroScores()
             });
-        const [formData, setFormData] = useState(getEmptyProfileFormData);
+            const [formData, setFormData] = useState(getEmptyProfileFormData);
+            useEffect(() => {
+                if (!selectedBattleScope) {
+                    if (selectedBattleGroupKey) setSelectedBattleGroupKey('');
+                    return;
+                }
+                if (selectedBattleScope === 'GENERAL' && selectedBattleGroupKey !== 'all') {
+                    setSelectedBattleGroupKey('all');
+                }
+            }, [selectedBattleScope, selectedBattleGroupKey]);
             const mapProfileToFormData = (profile = {}) => {
                 const baseFormData = getEmptyProfileFormData();
                 const safeProfile = profile && typeof profile === 'object' ? profile : {};
@@ -2283,8 +2293,8 @@ const saveProfile = (e) => {
                     closeContextMenu();
                 }
             };
-            const getArenaStats = (arenaName, profileId, scopeId = selectedBattleScope) => {
-                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+            const getArenaStats = (arenaName, profileId, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId, groupKey);
                 const stats = arenaBattleState[arenaKey]?.stats?.[profileId] || { wins: 0, battles: 0 };
                 const score = stats.battles ? Math.round((stats.wins / stats.battles) * 100) : 0;
                 return { ...stats, score };
@@ -2306,7 +2316,52 @@ const saveProfile = (e) => {
 
             const normalizeGroupingValue = (value = '') => String(value || '').trim().toLowerCase();
             const formatGroupingLabel = (value = '') => String(value || '').trim();
-            const buildArenaParticipants = (profiles = [], mode = 'GENERAL') => {
+            const getBattleScopeOptions = (profiles = [], scopeId = 'GENERAL') => {
+                const mode = String(scopeId || 'GENERAL').trim().toUpperCase();
+                const orderedProfiles = [...(profiles || [])]
+                    .filter((profile) => profile?.firebaseId && (profile?.nombre || '').trim())
+                    .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
+
+                if (mode === 'GENERAL') {
+                    return [{ key: 'all', label: 'Todas', typeLabel: 'General', ids: orderedProfiles.map((profile) => profile.firebaseId) }];
+                }
+
+                if (mode === 'EDADES') {
+                    const ageBuckets = {
+                        '18-28': { key: '18-28', label: '18–28', typeLabel: 'Edad', ids: [] },
+                        '29-39': { key: '29-39', label: '29–39', typeLabel: 'Edad', ids: [] },
+                        '40+': { key: '40+', label: '40–50+', typeLabel: 'Edad', ids: [] }
+                    };
+                    orderedProfiles.forEach((profile) => {
+                        const age = calcularEdad(profile.fechaNacimiento);
+                        if (!Number.isFinite(age) || age < 18) return;
+                        if (age <= 28) ageBuckets['18-28'].ids.push(profile.firebaseId);
+                        else if (age <= 39) ageBuckets['29-39'].ids.push(profile.firebaseId);
+                        else ageBuckets['40+'].ids.push(profile.firebaseId);
+                    });
+                    return Object.values(ageBuckets);
+                }
+
+                const field = mode === 'NACIONALIDADES' ? 'nacionalidad' : 'profesion';
+                const typeLabel = mode === 'NACIONALIDADES' ? 'Nacionalidad' : 'Profesión';
+                const groupedMap = orderedProfiles.reduce((acc, profile) => {
+                    const normalizedValue = normalizeGroupingValue(profile?.[field]);
+                    if (!normalizedValue) return acc;
+                    if (!acc[normalizedValue]) {
+                        acc[normalizedValue] = {
+                            key: normalizedValue,
+                            label: formatGroupingLabel(profile?.[field]) || normalizedValue,
+                            typeLabel,
+                            ids: []
+                        };
+                    }
+                    acc[normalizedValue].ids.push(profile.firebaseId);
+                    return acc;
+                }, {});
+                return Object.values(groupedMap)
+                    .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
+            };
+            const buildArenaParticipants = (profiles = [], mode = 'GENERAL', selectedGroupKey = '') => {
                 const baseProfiles = [...(profiles || [])]
                     .filter((profile) => profile?.firebaseId && (profile?.nombre || '').trim())
                     .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
@@ -2321,50 +2376,14 @@ const saveProfile = (e) => {
                     };
                 }
 
-                if (mode === 'EDADES') {
-                    const ageBuckets = {
-                        '18-28': { key: '18-28', label: '18–28', typeLabel: 'Edad', ids: [] },
-                        '29-39': { key: '29-39', label: '29–39', typeLabel: 'Edad', ids: [] },
-                        '40+': { key: '40+', label: '40+', typeLabel: 'Edad', ids: [] }
-                    };
-
-                    baseProfiles.forEach((profile) => {
-                        const age = calcularEdad(profile.fechaNacimiento);
-                        if (!Number.isFinite(age) || age < 18) return;
-                        if (age <= 28) ageBuckets['18-28'].ids.push(profile.firebaseId);
-                        else if (age <= 39) ageBuckets['29-39'].ids.push(profile.firebaseId);
-                        else ageBuckets['40+'].ids.push(profile.firebaseId);
-                    });
-
-                    const groupedIds = Object.values(ageBuckets)
-                        .filter((group) => group.ids.length >= 2);
-
-                    return {
-                        groupedIds,
-                        orderedIds: groupedIds.flatMap((group) => group.ids)
-                    };
-                }
-
-                const field = mode === 'NACIONALIDADES' ? 'nacionalidad' : 'profesion';
-                const typeLabel = mode === 'NACIONALIDADES' ? 'Nacionalidad' : 'Profesión';
-                const groupedMap = baseProfiles.reduce((acc, profile) => {
-                    const normalizedValue = normalizeGroupingValue(profile?.[field]);
-                    if (!normalizedValue) return acc;
-                    if (!acc[normalizedValue]) {
-                        acc[normalizedValue] = {
-                            key: normalizedValue,
-                            label: formatGroupingLabel(profile?.[field]) || normalizedValue,
-                            typeLabel,
-                            ids: []
-                        };
-                    }
-                    acc[normalizedValue].ids.push(profile.firebaseId);
-                    return acc;
-                }, {});
-
-                const groupedIds = Object.values(groupedMap)
-                    .filter((group) => group.ids.length >= 2)
-                    .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
+                const groupOptions = getBattleScopeOptions(baseProfiles, mode);
+                const normalizedSelectedGroupKey = normalizeGroupingValue(selectedGroupKey);
+                const groupedIds = groupOptions
+                    .filter((group) => {
+                        if (!normalizedSelectedGroupKey || normalizedSelectedGroupKey === 'all') return true;
+                        return normalizeGroupingValue(group.key) === normalizedSelectedGroupKey;
+                    })
+                    .filter((group) => group.ids.length >= 2);
 
                 return {
                     groupedIds,
@@ -2518,7 +2537,8 @@ const saveProfile = (e) => {
             const normalizeArenaState = (arenaState) => {
                 if (!arenaState) return null;
                 const mode = ARENA_PARTICIPANT_MODES.includes(arenaState.mode) ? arenaState.mode : 'GENERAL';
-                const participants = buildArenaParticipants(perfiles, mode);
+                const groupKey = String(arenaState.groupKey || 'all').trim().toLowerCase() || 'all';
+                const participants = buildArenaParticipants(perfiles, mode, groupKey);
                 const groupedIds = participants.groupedIds || [];
                 const orderedIds = participants.orderedIds || [];
                 const derivedState = buildArenaDerivedState(arenaState.directMatchups || arenaState.matchups || {}, orderedIds);
@@ -2543,6 +2563,7 @@ const saveProfile = (e) => {
                 return {
                     ...arenaState,
                     mode,
+                    groupKey,
                     groupedIds,
                     orderedIds,
                     stats,
@@ -2587,14 +2608,15 @@ const saveProfile = (e) => {
                 Promise.all(updates).catch(() => {});
             }, [arenaBattleState, perfiles]);
 
-            const initArenaBattle = (arenaName, scopeId = selectedBattleScope) => {
+            const initArenaBattle = (arenaName, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
                 const orderedProfiles = [...perfiles]
                     .filter(p => p?.firebaseId && (p?.nombre || '').trim())
                     .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
 
                 if (orderedProfiles.length < 2) return;
 
-                const participants = buildArenaParticipants(orderedProfiles, arenaParticipantMode);
+                const mode = String(scopeId || 'GENERAL').trim().toUpperCase();
+                const participants = buildArenaParticipants(orderedProfiles, mode, groupKey);
                 const groupedIds = participants.groupedIds || [];
                 const orderedIds = participants.orderedIds || [];
                 const derivedState = buildArenaDerivedState({}, orderedIds);
@@ -2603,7 +2625,8 @@ const saveProfile = (e) => {
                 const activeGroup = getGroupForPair(groupedIds, initialPair[0], initialPair[1]);
 
                 const nextArenaState = {
-                    mode: arenaParticipantMode,
+                    mode,
+                    groupKey: String(groupKey || '').trim().toLowerCase() || 'all',
                     groupedIds,
                     orderedIds,
                     stats: derivedState.stats,
@@ -2616,7 +2639,7 @@ const saveProfile = (e) => {
                     activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
                     isFinished: false
                 };
-                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                const arenaKey = getArenaBattleKey(arenaName, scopeId, groupKey);
                 if (!arenaKey) return;
 
                 setArenaBattleState(prev => ({
@@ -2637,14 +2660,14 @@ const saveProfile = (e) => {
                 }
             };
 
-            const registerBattleWinner = (arenaName, winnerId, scopeId = selectedBattleScope) => {
-                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+            const registerBattleWinner = (arenaName, winnerId, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId, groupKey);
                 const state = arenaBattleState[arenaKey];
                 if (!state || state.isFinished) return;
 
                 const groupedIds = Array.isArray(state.groupedIds) && state.groupedIds.length
                     ? state.groupedIds
-                    : buildArenaParticipants(perfiles, state.mode || 'GENERAL').groupedIds;
+                    : buildArenaParticipants(perfiles, state.mode || 'GENERAL', state.groupKey || 'all').groupedIds;
                 const { championId, challengerId } = state;
                 if (winnerId !== championId && winnerId !== challengerId) return;
                 const loserId = winnerId === championId ? challengerId : championId;
@@ -2757,7 +2780,7 @@ const saveProfile = (e) => {
                 }
             };
 
-            const resetArenaScores = async (arenaName, scopeId = selectedBattleScope) => {
+            const resetArenaScores = async (arenaName, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
                 if (!arenaName) {
                     alert('Seleccioná un item para resetear.');
                     return;
@@ -2780,7 +2803,7 @@ const saveProfile = (e) => {
                         }
                     })));
 
-                    const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                    const arenaKey = getArenaBattleKey(arenaName, scopeId, groupKey);
                     setArenaBattleState((prev) => {
                         if (!prev?.[arenaKey]) return prev;
                         const next = { ...prev };
@@ -2796,8 +2819,8 @@ const saveProfile = (e) => {
                 }
             };
 
-            const resetSpecificBattle = async (arenaName, profileAId, profileBId, scopeId = selectedBattleScope) => {
-                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+            const resetSpecificBattle = async (arenaName, profileAId, profileBId, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId, groupKey);
                 const arenaState = arenaBattleState?.[arenaKey];
                 if (!arenaState) {
                     alert('Esa arena no tiene estado cargado.');
@@ -2925,6 +2948,11 @@ const saveProfile = (e) => {
 
                 return base;
             }, [perfiles, searchQuery, activeTab, selectedCategory, filters]);
+            const battleScopeOptions = useMemo(() => {
+                if (!selectedBattleScope) return [];
+                return getBattleScopeOptions(perfiles, selectedBattleScope);
+            }, [perfiles, selectedBattleScope]);
+            const requiresBattleGroupSelection = selectedBattleScope && selectedBattleScope !== 'GENERAL';
             const getSortValue = (profile, key) => {
                 if (key === 'promedio') return Number(calcularPromedio(profile)) || 0;
                 if (key === 'nombre') return (profile.nombre || '').toLowerCase();
@@ -3953,7 +3981,7 @@ const saveProfile = (e) => {
                             ))}
                         </select>
                         <button
-                            onClick={() => resetArenaScores(resetArenaTarget, selectedBattleScope)}
+                            onClick={() => resetArenaScores(resetArenaTarget, selectedBattleScope, selectedBattleGroupKey)}
                             className="bg-red-500/20 text-red-300 border border-red-400/40 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] hover:bg-red-500 hover:text-white transition-all"
                             disabled={!selectedBattleScope}
                         >
@@ -3966,7 +3994,9 @@ const saveProfile = (e) => {
                     <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">
                         {!selectedBattleScope
                             ? 'Paso 1: elegí un modo de enfrentamiento'
-                            : `Paso 2: elegí uno de los 15 ítems · Modo: ${getBattleScopeLabel(selectedBattleScope)}`}
+                            : requiresBattleGroupSelection && !selectedBattleGroupKey
+                                ? `Paso 2: elegí una opción de ${getBattleScopeLabel(selectedBattleScope)}`
+                                : `Paso 3: elegí uno de los 15 ítems · Modo: ${getBattleScopeLabel(selectedBattleScope)}`}
                     </p>
                 </div>
             </div>
@@ -3976,7 +4006,11 @@ const saveProfile = (e) => {
                     {BATTLE_SCOPES.map((scope) => (
                         <button
                             key={scope.id}
-                            onClick={() => setSelectedBattleScope(scope.id)}
+                            onClick={() => {
+                                setSelectedBattleScope(scope.id);
+                                setSelectedBattleGroupKey(scope.id === 'GENERAL' ? 'all' : '');
+                                setSelectedArena(null);
+                            }}
                             className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
                         >
                             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Modo</p>
@@ -3994,22 +4028,55 @@ const saveProfile = (e) => {
                             Modo: {getBattleScopeLabel(selectedBattleScope)}
                         </p>
                         <button
-                            onClick={() => setSelectedBattleScope(null)}
+                            onClick={() => {
+                                setSelectedBattleScope(null);
+                                setSelectedBattleGroupKey('');
+                                setSelectedArena(null);
+                            }}
                             className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border theme-border-secondary text-[10px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] transition-all"
                         >
                             Cambiar modo
                         </button>
                     </div>
+                    {requiresBattleGroupSelection && (
+                        <div className="theme-surface-card border theme-border-secondary rounded-2xl p-4 space-y-3">
+                            <p className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">
+                                Elegí una opción de {getBattleScopeLabel(selectedBattleScope)}
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                                {battleScopeOptions.map((option) => (
+                                    <button
+                                        key={option.key}
+                                        onClick={() => {
+                                            setSelectedBattleGroupKey(option.key);
+                                            setSelectedArena(null);
+                                        }}
+                                        className={`px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                            selectedBattleGroupKey === option.key
+                                                ? 'border-[var(--metal-gold)] text-[var(--metal-gold)] bg-[var(--metal-bronze)]/20'
+                                                : 'theme-border-secondary text-slate-200 hover:border-[var(--metal-gold)]'
+                                        }`}
+                                    >
+                                        {option.label} <span className="text-slate-400">({option.ids.length})</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                    {requiresBattleGroupSelection && !selectedBattleGroupKey && (
+                        <p className="text-xs text-slate-400">Seleccioná una opción para habilitar las batallas.</p>
+                    )}
                     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
                         {ARENAS.map((arenaName) => (
                     <button
                         key={arenaName}
+                        disabled={requiresBattleGroupSelection && !selectedBattleGroupKey}
                         onClick={() => {
                             setSelectedArena(arenaName);
-                            const arenaKey = getArenaBattleKey(arenaName, selectedBattleScope);
-                            if (!arenaBattleState[arenaKey]) initArenaBattle(arenaName, selectedBattleScope);
+                            const arenaKey = getArenaBattleKey(arenaName, selectedBattleScope, selectedBattleGroupKey);
+                            if (!arenaBattleState[arenaKey]) initArenaBattle(arenaName, selectedBattleScope, selectedBattleGroupKey);
                         }}
-                        className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
+                        className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Item</p>
                         <h3 className="text-2xl font-black italic text-white mt-2">{arenaName}</h3>
@@ -4022,12 +4089,12 @@ const saveProfile = (e) => {
     )}
 
     {activeTab === 'BATALLAS' && selectedArena && (() => {
-        const arenaKey = getArenaBattleKey(selectedArena, selectedBattleScope);
+        const arenaKey = getArenaBattleKey(selectedArena, selectedBattleScope, selectedBattleGroupKey);
         const arenaState = arenaBattleState[arenaKey];
         const champion = perfiles.find(p => p.firebaseId === arenaState?.championId);
         const challenger = perfiles.find(p => p.firebaseId === arenaState?.challengerId);
-        const championStats = champion ? getArenaStats(selectedArena, champion.firebaseId, selectedBattleScope) : null;
-        const challengerStats = challenger ? getArenaStats(selectedArena, challenger.firebaseId, selectedBattleScope) : null;
+        const championStats = champion ? getArenaStats(selectedArena, champion.firebaseId, selectedBattleScope, selectedBattleGroupKey) : null;
+        const challengerStats = challenger ? getArenaStats(selectedArena, challenger.firebaseId, selectedBattleScope, selectedBattleGroupKey) : null;
 
         return (
             <div className="space-y-8 animate-in fade-in duration-500">
@@ -4044,6 +4111,7 @@ const saveProfile = (e) => {
                             onClick={() => {
                                 setSelectedArena(null);
                                 setSelectedBattleScope(null);
+                                setSelectedBattleGroupKey('');
                             }}
                             className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
                         >
@@ -4085,7 +4153,7 @@ const saveProfile = (e) => {
                                             return (
                                                 <button
                                                     key={pairKey}
-                                                    onClick={() => resetSpecificBattle(selectedArena, profileAId, profileBId, selectedBattleScope)}
+                                                    onClick={() => resetSpecificBattle(selectedArena, profileAId, profileBId, selectedBattleScope, selectedBattleGroupKey)}
                                                     className="w-full text-left px-3 py-2 rounded-xl border theme-border-secondary bg-slate-900/60 hover:border-red-300/70 transition-all"
                                                 >
                                                     <span className="text-xs text-white font-semibold">{labelA} vs {labelB}</span>
@@ -4116,7 +4184,7 @@ const saveProfile = (e) => {
                     <div className="theme-surface-card border theme-border-secondary rounded-2xl p-8 text-center">
                         <p className="text-sm text-slate-300">Presioná para iniciar esta arena.</p>
                         <button
-                            onClick={() => initArenaBattle(selectedArena, selectedBattleScope)}
+                            onClick={() => initArenaBattle(selectedArena, selectedBattleScope, selectedBattleGroupKey)}
                             className="mt-4 bg-[var(--metal-bronze)] text-white px-5 py-3 rounded-xl font-black uppercase text-xs tracking-[0.2em]"
                         >
                             Iniciar batallas
@@ -4134,7 +4202,7 @@ const saveProfile = (e) => {
                 {arenaState && champion && challenger && !arenaState.isFinished && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
                         <button
-                            onClick={() => registerBattleWinner(selectedArena, champion.firebaseId, selectedBattleScope)}
+                            onClick={() => registerBattleWinner(selectedArena, champion.firebaseId, selectedBattleScope, selectedBattleGroupKey)}
                             className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
                         >
                             <img
@@ -4162,7 +4230,7 @@ const saveProfile = (e) => {
                         </div>
 
                         <button
-                            onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId, selectedBattleScope)}
+                            onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId, selectedBattleScope, selectedBattleGroupKey)}
                             className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
                         >
                             <img
