@@ -3264,9 +3264,11 @@ const saveProfile = (e) => {
                             {[
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
+                                { id: 'PERSONAJE', icon: 'user', label: 'Personaje' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
                                 { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
-                                { id: 'GALERIA', icon: 'images', label: 'Galería' }
+                                { id: 'GALERIA', icon: 'images', label: 'Galería' },
+                                { id: 'ESCENAS_FOTOS', icon: 'gallery-horizontal', label: 'Escenas/Fotos' }
                             ].map(item => (
                                 <button
                                     key={item.id}
@@ -3275,6 +3277,9 @@ const saveProfile = (e) => {
                                         setSelectedCategory(null);
                                         setSelectedGalleryBucket(null);
                                         setSelectedGalleryIndex(null);
+                                        setSelectedCharacterBucketIds([]);
+                                        setSelectedTagLabels([]);
+                                        setGalleryFilterLabel('INICIAL');
                                     }}
                                     className={`btn-metal sidebar-nav-btn w-full flex items-center gap-4 px-6 py-4 rounded-[2rem] text-sm transition-all ${activeTab === item.id ? 'is-active text-[#ecfeff]' : 'text-slate-900'}`}
                                 >
@@ -3411,6 +3416,20 @@ const saveProfile = (e) => {
                                         </div>
                                     );
                                 })}
+                            </div>
+                        </div>
+                    )}
+
+                    {activeTab === 'PERSONAJE' && !selectedCategory && (
+                        <div className="theme-surface-card gothic-frame gothic-frame--ornate rounded-[2rem] p-8 md:p-10 animate-in fade-in duration-500">
+                            <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Personaje</h2>
+                            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-2">
+                                Espacio listo para construir la vista de personaje con el estilo actual.
+                            </p>
+                            <div className="mt-8">
+                                <button type="button" className="btn-metal btn-metal--gold px-6 py-3 rounded-2xl text-xs">
+                                    Próximamente
+                                </button>
                             </div>
                         </div>
                     )}
@@ -4154,6 +4173,20 @@ const saveProfile = (e) => {
                     </div>
                 </div>
             )}
+        </div>
+    )}
+
+    {activeTab === 'ESCENAS_FOTOS' && !selectedCategory && (
+        <div className="theme-surface-card gothic-frame gothic-frame--ornate rounded-[2rem] p-8 md:p-10 animate-in fade-in duration-500">
+            <h2 className="neon-sign neon-sign--magenta text-4xl font-black italic text-white uppercase tracking-tighter">Escenas/Fotos</h2>
+            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-2">
+                Nuevo bloque preparado para escenas multimedia sin afectar los tabs existentes.
+            </p>
+            <div className="mt-8">
+                <button type="button" className="btn-metal btn-metal--silver px-6 py-3 rounded-2xl text-xs text-slate-900">
+                    Configurar contenido
+                </button>
+            </div>
         </div>
     )}
 
