@@ -189,6 +189,13 @@
             if (!normalized || isBlockedMediaUrl(normalized)) return fallback;
             return normalized;
         };
+        const normalizeSearchValue = (value = '') => (
+            String(value || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim()
+        );
         const detectGalleryItemType = (url = '', explicitType = '') => {
             if (explicitType === 'video' || explicitType === 'image') return explicitType;
             const normalizedUrl = (url || '').trim();
@@ -1241,6 +1248,8 @@
 
             const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
+            const [characterSearchTerm, setCharacterSearchTerm] = useState('');
+            const [selectedCharacterId, setSelectedCharacterId] = useState(null);
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
@@ -3330,6 +3339,32 @@ const saveProfile = (e) => {
 
                 return sortDirection === 'asc' ? result : -result;
             });
+            const filteredCharacterProfiles = useMemo(() => {
+                const normalizedSearchTerm = normalizeSearchValue(characterSearchTerm);
+                return (perfiles || []).filter((profile) => {
+                    const normalizedName = normalizeSearchValue(profile?.nombre || '');
+                    if (!normalizedSearchTerm) return Boolean(normalizedName);
+                    return normalizedName.includes(normalizedSearchTerm);
+                });
+            }, [perfiles, characterSearchTerm]);
+            const selectedCharacterProfile = useMemo(() => (
+                (perfiles || []).find((profile) => profile?.firebaseId === selectedCharacterId) || null
+            ), [perfiles, selectedCharacterId]);
+            const selectedCharacterRankingPosition = useMemo(() => {
+                if (!selectedCharacterProfile?.firebaseId) return null;
+                const rankingIndex = sortedProfiles.findIndex((profile) => profile?.firebaseId === selectedCharacterProfile.firebaseId);
+                return rankingIndex >= 0 ? rankingIndex + 1 : null;
+            }, [sortedProfiles, selectedCharacterProfile]);
+
+            useEffect(() => {
+                if (!filteredCharacterProfiles.length) {
+                    if (selectedCharacterId !== null) setSelectedCharacterId(null);
+                    return;
+                }
+                if (!selectedCharacterId || !filteredCharacterProfiles.some((profile) => profile?.firebaseId === selectedCharacterId)) {
+                    setSelectedCharacterId(filteredCharacterProfiles[0].firebaseId);
+                }
+            }, [filteredCharacterProfiles, selectedCharacterId]);
             return (
                 <div className="app-space-theme flex h-screen overflow-hidden bg-[#020617] stone-wall-surface relative">
                     {isSidebarOpen && (
@@ -3350,6 +3385,7 @@ const saveProfile = (e) => {
                         <nav className="flex-1 space-y-2 mb-8">
                             {[
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
+                                { id: 'PERSONAJE', icon: 'user-round-search', label: 'Personaje' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
                                 { id: 'PERSONAJE', icon: 'user', label: 'Personaje' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
@@ -4752,68 +4788,69 @@ const saveProfile = (e) => {
                 </tbody>
             </table>
 
-            {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
-                const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
-                return (
-                    <div
-                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-                        onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
-                    >
-                        <div
-                            className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
-                            onClick={(event) => event.stopPropagation()}
-                        >
-                            <div className="flex items-start justify-between gap-4 mb-6">
-                                <div>
-                                    <h3 className="font-title text-xl font-black text-white tracking-wide">
-                                        {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
-                                    </h3>
-                                    <p className="text-xs text-slate-300 mt-1">
-                                        Detalle de enfrentamientos ganados y perdidos.
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
-                                    className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
-                                >
-                                    Cerrar
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
-                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
-                                    {breakdown.wins.length ? (
-                                        <ul className="space-y-2">
-                                            {breakdown.wins.map((name, idx) => (
-                                                <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
-                                    )}
-                                </div>
-
-                                <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
-                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
-                                    {breakdown.losses.length ? (
-                                        <ul className="space-y-2">
-                                            {breakdown.losses.map((name, idx) => (
-                                                <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
         </div>
     )}
+
+    {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
+        const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
+        return (
+            <div
+                className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+            >
+                <div
+                    className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <div className="flex items-start justify-between gap-4 mb-6">
+                        <div>
+                            <h3 className="font-title text-xl font-black text-white tracking-wide">
+                                {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
+                            </h3>
+                            <p className="text-xs text-slate-300 mt-1">
+                                Detalle de enfrentamientos ganados y perdidos.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                            className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
+                        >
+                            Cerrar
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
+                            <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
+                            {breakdown.wins.length ? (
+                                <ul className="space-y-2">
+                                    {breakdown.wins.map((name, idx) => (
+                                        <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
+                            <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
+                            {breakdown.losses.length ? (
+                                <ul className="space-y-2">
+                                    {breakdown.losses.map((name, idx) => (
+                                        <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    })()}
 
     {/* 4. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
     {activeTab === 'CATEGORIAS' && !selectedCategory && (
