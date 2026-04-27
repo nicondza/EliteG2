@@ -3153,6 +3153,7 @@ const saveProfile = (e) => {
                 const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
                 const winIds = new Set();
                 const lossIds = new Set();
+                const arenaEntries = Object.entries(arenaBattleState || {});
 
                 arenaNames.forEach((arenaName) => {
                     const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(arenaName)]?.matchups || {};
