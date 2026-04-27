@@ -188,6 +188,10 @@ h1, h2, h3, h4, h5, h6,
     --card-metal-light: color-mix(in srgb, var(--card-neon-color) 28%, #f8fafc 72%);
     border: 1px solid color-mix(in srgb, var(--card-neon-color) 55%, rgba(148, 163, 184, 0.45) 45%);
     box-shadow: 0 0 18px var(--card-neon-glow), inset 0 0 28px color-mix(in srgb, var(--card-neon-glow) 30%, transparent);
+    background:
+        radial-gradient(circle at 50% 88%, color-mix(in srgb, var(--card-neon-color) 14%, transparent) 0%, transparent 62%),
+        linear-gradient(180deg, rgba(2, 6, 23, 0.62), rgba(2, 6, 23, 0.82));
+    transition: box-shadow 260ms ease, background 260ms ease;
 }
 
 .profile-card::before {
@@ -209,11 +213,66 @@ h1, h2, h3, h4, h5, h6,
 
 .profile-card:hover {
     box-shadow: 0 0 26px var(--card-neon-glow), 0 0 60px color-mix(in srgb, var(--card-neon-color) 42%, transparent), inset 0 0 55px color-mix(in srgb, var(--card-neon-color) 28%, transparent);
+    background:
+        radial-gradient(circle at 50% 80%, color-mix(in srgb, var(--card-neon-color) 24%, transparent) 0%, transparent 68%),
+        linear-gradient(180deg, color-mix(in srgb, var(--card-neon-color) 12%, rgba(2, 6, 23, 0.52) 88%), rgba(2, 6, 23, 0.84));
 }
 
 .profile-card:hover::before {
     opacity: 1;
     box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.46), inset 0 -2px 4px rgba(2, 6, 23, 0.85), 0 0 24px color-mix(in srgb, var(--card-neon-color) 65%, transparent);
+}
+
+.back-btn-silver {
+    color: #f8fafc;
+    border: 1px solid color-mix(in srgb, #f8fafc 62%, #94a3b8 38%);
+    background:
+        radial-gradient(circle at 22% 18%, rgba(255, 255, 255, 0.65) 0%, rgba(255, 255, 255, 0.16) 30%, transparent 58%),
+        linear-gradient(155deg, #dbe7f6 0%, #94a3b8 32%, #475569 62%, #1e293b 100%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), 0 0 18px rgba(226, 232, 240, 0.35), 0 8px 16px rgba(2, 6, 23, 0.45);
+}
+
+.back-btn-silver:hover {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.65), 0 0 24px rgba(226, 232, 240, 0.58), 0 0 42px rgba(203, 213, 225, 0.38);
+}
+
+.profession-banner {
+    background:
+        linear-gradient(90deg, color-mix(in srgb, var(--banner-color, #22d3ee) 18%, rgba(2, 6, 23, 0.92) 82%) 0%, rgba(2, 6, 23, 0.82) 58%, color-mix(in srgb, var(--banner-color, #22d3ee) 42%, rgba(2, 6, 23, 0.5) 58%) 100%);
+    border: 1px solid color-mix(in srgb, var(--banner-color, #22d3ee) 52%, rgba(148, 163, 184, 0.34) 48%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 0 20px color-mix(in srgb, var(--banner-color, #22d3ee) 38%, transparent), 16px 0 32px color-mix(in srgb, var(--banner-color, #22d3ee) 36%, transparent);
+}
+
+.card-menu-btn {
+    width: 2rem;
+    height: 2rem;
+}
+
+.card-score-badge {
+    background: color-mix(in srgb, var(--card-neon-color) 24%, rgba(2, 6, 23, 0.86) 76%);
+    border-color: color-mix(in srgb, var(--card-neon-color) 50%, rgba(148, 163, 184, 0.25) 50%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    transition: box-shadow 220ms ease, background 220ms ease, transform 220ms ease;
+}
+
+.profile-card:hover .card-score-badge {
+    background: color-mix(in srgb, var(--card-neon-color) 34%, rgba(2, 6, 23, 0.74) 66%);
+    box-shadow: 0 0 18px color-mix(in srgb, var(--card-neon-color) 58%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    transform: translateY(-1px);
+}
+
+.card-footer-profession {
+    background:
+        linear-gradient(165deg, color-mix(in srgb, var(--card-neon-color) 20%, rgba(15, 23, 42, 0.86) 80%), rgba(2, 6, 23, 0.9));
+    border-color: color-mix(in srgb, var(--card-neon-color) 48%, rgba(148, 163, 184, 0.24) 52%) !important;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    transition: box-shadow 220ms ease, background 220ms ease, border-color 220ms ease;
+}
+
+.profile-card:hover .card-footer-profession {
+    background:
+        linear-gradient(165deg, color-mix(in srgb, var(--card-neon-color) 28%, rgba(15, 23, 42, 0.76) 72%), rgba(2, 6, 23, 0.84));
+    box-shadow: 0 0 20px color-mix(in srgb, var(--card-neon-color) 44%, transparent), inset 0 1px 0 rgba(255, 255, 255, 0.18);
 }
 
 .profession-folder-card {
