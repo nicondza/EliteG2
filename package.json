@@ -1,0 +1,12 @@
+{
+  "name": "eliteg2",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "esbuild script.js --bundle --format=iife --outfile=dist/app.js --jsx-factory=React.createElement --jsx-fragment=React.Fragment",
+    "build:watch": "esbuild script.js --bundle --format=iife --outfile=dist/app.js --jsx-factory=React.createElement --jsx-fragment=React.Fragment --watch"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.4"
+  }
+}
