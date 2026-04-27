@@ -218,34 +218,44 @@
         const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
         const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
         const getGalleryItemType = (item) => normalizeGalleryItem(item).type;
-        const checkImageUrlIsBroken = (url = '', timeoutMs = 7000) => new Promise((resolve) => {
+        const checkImageUrlIsBroken = async (url = '', {
+            timeoutMs = 12000,
+            retries = 1
+        } = {}) => {
             const normalizedUrl = String(url || '').trim();
-            if (!normalizedUrl) {
-                resolve(true);
-                return;
+            if (!normalizedUrl) return true;
+
+            const runSingleCheck = () => new Promise((resolve) => {
+                const image = new Image();
+                let settled = false;
+                const finalize = (isBroken) => {
+                    if (settled) return;
+                    settled = true;
+                    image.onload = null;
+                    image.onerror = null;
+                    resolve(Boolean(isBroken));
+                };
+
+                const timeoutId = window.setTimeout(() => finalize(true), timeoutMs);
+                image.onload = () => {
+                    clearTimeout(timeoutId);
+                    const hasPixels = Number(image.naturalWidth) > 0 && Number(image.naturalHeight) > 0;
+                    finalize(!hasPixels);
+                };
+                image.onerror = () => {
+                    clearTimeout(timeoutId);
+                    finalize(true);
+                };
+                image.src = normalizedUrl;
+            });
+
+            for (let attempt = 0; attempt <= retries; attempt += 1) {
+                const isBroken = await runSingleCheck();
+                if (!isBroken) return false;
             }
 
-            const image = new Image();
-            let settled = false;
-            const finalize = (isBroken) => {
-                if (settled) return;
-                settled = true;
-                image.onload = null;
-                image.onerror = null;
-                resolve(Boolean(isBroken));
-            };
-
-            const timeoutId = window.setTimeout(() => finalize(true), timeoutMs);
-            image.onload = () => {
-                clearTimeout(timeoutId);
-                finalize(false);
-            };
-            image.onerror = () => {
-                clearTimeout(timeoutId);
-                finalize(true);
-            };
-            image.src = normalizedUrl;
-        });
+            return true;
+        };
         const getBattlePhotoForArena = (profile, arenaName) => {
             const normalizedArena = (arenaName || '').trim().toLowerCase();
             const galleryImages = Array.isArray(profile?.galeria?.fotos)
@@ -1962,10 +1972,19 @@ const getInitialCatFormData = () => ({
                 }
 
                 const run = async () => {
-                    const results = await Promise.all(imagePhotos.map(async (photo) => ({
-                        id: photo.id,
-                        isBroken: await checkImageUrlIsBroken(photo.url)
-                    })));
+                    const concurrency = 8;
+                    const results = [];
+
+                    for (let index = 0; index < imagePhotos.length; index += concurrency) {
+                        const batch = imagePhotos.slice(index, index + concurrency);
+                        const batchResults = await Promise.all(batch.map(async (photo) => ({
+                            id: photo.id,
+                            isBroken: await checkImageUrlIsBroken(photo.url)
+                        })));
+
+                        results.push(...batchResults);
+                        if (isCancelled) return;
+                    }
 
                     if (isCancelled) return;
 
