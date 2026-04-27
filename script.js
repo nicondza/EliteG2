@@ -190,6 +190,13 @@
             if (!normalized || isBlockedMediaUrl(normalized)) return fallback;
             return normalized;
         };
+        const normalizeSearchValue = (value = '') => (
+            String(value || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .trim()
+        );
         const detectGalleryItemType = (url = '', explicitType = '') => {
             if (explicitType === 'video' || explicitType === 'image') return explicitType;
             const normalizedUrl = (url || '').trim();
@@ -215,6 +222,21 @@
                 };
             }
             return { url: '', label: '', type: detectGalleryItemType('', fallbackType) };
+        };
+        const normalizeGlobalMediaItem = (itemId, item) => {
+            const rawItem = item && typeof item === 'object' ? item : {};
+            const safeUrl = getSafeImageSrc((rawItem.url || '').trim(), '');
+            const detectedType = detectGalleryItemType(safeUrl, rawItem.type || '');
+            const embedInfo = detectedType === 'video' ? getVideoEmbedInfo(safeUrl) : null;
+            return {
+                id: String(itemId || ''),
+                url: safeUrl,
+                type: detectedType,
+                category: rawItem.category || '',
+                createdAt: rawItem.createdAt || 0,
+                source: rawItem.source === 'file' ? 'file' : 'url',
+                embedInfo
+            };
         };
         const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
         const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
@@ -586,6 +608,7 @@
                         position: relative;
                         width: 100%;
                         height: 100vh;
+                        height: 100dvh;
                         display: flex;
                         align-items: center;
                         justify-content: center;
@@ -614,6 +637,20 @@
                             0 24px 52px rgba(0, 0, 0, 0.64),
                             0 0 0 3px rgba(83, 55, 27, 0.8),
                             inset 0 0 24px rgba(255, 223, 171, 0.12);
+                    }
+                    .viewer-slide video,
+                    .viewer-slide iframe {
+                        max-width: min(92vw, 1400px);
+                        max-height: calc(100vh - 64px);
+                        width: auto;
+                        height: auto;
+                        border-radius: 24px;
+                        box-shadow: 0 0 40px rgba(34, 211, 238, 0.2);
+                        background: #000;
+                    }
+                    .viewer-slide iframe {
+                        border: 0;
+                        aspect-ratio: 16 / 9;
                     }
                     .viewer-nav {
                         position: fixed;
@@ -703,42 +740,97 @@
                         color: #f5d0fe;
                         background: rgba(192, 38, 211, 0.35);
                     }
-                    @media (max-width: 640px) {
+                    @media (max-width: 768px) {
+                        .fullscreen-viewer {
+                            background: rgba(8, 4, 2, 0.985);
+                        }
                         .viewer-stage {
-                            padding: 20px 16px 106px;
+                            width: 100vw;
+                            height: 100dvh;
+                            min-height: 100dvh;
+                            padding:
+                                calc(env(safe-area-inset-top, 0px) + 76px)
+                                0
+                                calc(env(safe-area-inset-bottom, 0px) + 116px);
+                        }
+                        .viewer-slide {
+                            width: 100vw;
+                            height: 100dvh;
+                        }
+                        .viewer-slide img,
+                        .viewer-slide video,
+                        .viewer-slide iframe {
+                            width: 100vw;
+                            height: 100dvh;
+                            max-width: none;
+                            max-height: none;
+                            min-width: 100vw;
+                            min-height: 100dvh;
+                            object-fit: contain;
+                            border-radius: 0;
+                            border: 0;
+                            box-shadow: none;
+                        }
+                        .viewer-controls {
+                            top: calc(env(safe-area-inset-top, 0px) + 12px);
+                            left: calc(env(safe-area-inset-left, 0px) + 12px);
+                            gap: 10px;
+                        }
+                        .viewer-control-btn {
+                            min-height: 44px;
+                            padding: 10px 14px;
+                            font-size: 10px;
                         }
                         .viewer-close {
-                            top: 14px;
-                            right: 16px;
-                            width: 42px;
-                            height: 42px;
+                            top: calc(env(safe-area-inset-top, 0px) + 12px);
+                            right: calc(env(safe-area-inset-right, 0px) + 12px);
+                            width: 44px;
+                            height: 44px;
+                            font-size: 28px;
                         }
                         .viewer-nav {
-                            bottom: 18px;
-                            width: 40px;
-                            height: 40px;
-                            font-size: 22px;
+                            bottom: calc(env(safe-area-inset-bottom, 0px) + 18px);
+                            width: 48px;
+                            height: 48px;
+                            font-size: 26px;
                         }
                         .viewer-nav.prev {
-                            left: 16px;
+                            left: calc(env(safe-area-inset-left, 0px) + 12px);
                         }
                         .viewer-nav.next {
-                            right: 16px;
+                            right: calc(env(safe-area-inset-right, 0px) + 12px);
                         }
                         .viewer-hint {
-                            bottom: 20px;
+                            left: 50%;
+                            bottom: calc(env(safe-area-inset-bottom, 0px) + 22px);
+                            max-width: calc(100vw - 132px);
                             padding: 8px 12px;
+                            font-size: 10px;
+                            text-align: center;
+                        }
+                    }
+                    @media (max-width: 640px) {
+                        .viewer-close {
+                            width: 44px;
+                            height: 44px;
+                        }
+                        .viewer-nav {
+                            width: 44px;
+                            height: 44px;
+                            font-size: 24px;
+                        }
+                        .viewer-hint {
+                            padding: 8px 10px;
                             font-size: 10px;
                             max-width: calc(100vw - 120px);
                             text-align: center;
                         }
                         .viewer-controls {
-                            top: 14px;
-                            left: 14px;
                             gap: 8px;
                         }
                         .viewer-control-btn {
-                            padding: 7px 10px;
+                            min-height: 44px;
+                            padding: 8px 10px;
                             font-size: 9px;
                             letter-spacing: 0.16em;
                         }
@@ -900,8 +992,8 @@
                             <div class="viewer-slide" id="viewer-slide-${index}">
                                 ${itemType === 'video'
                                     ? (embedInfo
-                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" style="width:min(92vw, 1400px); height:min(75vh, 820px); border:0; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
-                                        : `<video src="${foto.url}" controls playsinline style="max-width:min(92vw, 1400px); max-height:calc(100vh - 64px); width:auto; height:auto; border-radius:24px; box-shadow:0 0 40px rgba(34, 211, 238, 0.2); background:#000;"></video>`)
+                                        ? `<iframe src="${embedInfo.src}" title="${embedInfo.title} ${index + 1}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>`
+                                        : `<video src="${foto.url}" controls playsinline></video>`)
                                     : `<img src="${foto.url}" alt="Vista completa ${index + 1}" onerror="${BROKEN_IMAGE_INLINE_HANDLER}" />`
                                 }
                             </div>`;
@@ -912,15 +1004,22 @@
                 <script>
                     const viewer = document.getElementById('fullscreenViewer');
                     const galleryGrid = document.getElementById('galleryGrid');
+                    const viewerStage = document.getElementById('viewerStage');
                     const viewerSlides = Array.from(document.querySelectorAll('.viewer-slide'));
                     const viewerPrevButton = document.getElementById('viewerPrev');
                     const viewerNextButton = document.getElementById('viewerNext');
                     const viewerPlayToggleButton = document.getElementById('viewerPlayToggle');
                     const viewerRandomToggleButton = document.getElementById('viewerRandomToggle');
+                    const viewerStage = document.getElementById('viewerStage') || viewer;
                     let currentViewerIndex = 0;
                     let viewerAutoplay = false;
                     let viewerRandom = false;
                     let viewerAutoplayTimeout = null;
+                    let viewerScrollTop = 0;
+                    let previousBodyOverflow = '';
+                    let previousBodyPosition = '';
+                    let previousBodyTop = '';
+                    let previousBodyWidth = '';
 
                     function resetAddMediaModalFields() {
                         const urlInput = document.getElementById('nuevaFotoUrl');
@@ -1009,12 +1108,21 @@
                         if (viewerNextButton) viewerNextButton.disabled = disableNavigation;
                     }
 
-                    function renderViewerSlide(index) {
+                    function renderViewerSlide(index, options = {}) {
                         if (!viewerSlides.length) return;
+                        const shouldSyncScroll = options.syncScroll !== false;
+                        const scrollBehavior = options.scrollBehavior || 'smooth';
                         currentViewerIndex = Math.max(0, Math.min(index, viewerSlides.length - 1));
                         viewerSlides.forEach(function(slide, slideIndex) {
                             slide.classList.toggle('active', slideIndex === currentViewerIndex);
                         });
+                        if (shouldSyncScroll && viewerStage && isMobileViewerMode()) {
+                            const viewportWidth = getViewerViewportWidth();
+                            viewerStage.scrollTo({
+                                left: currentViewerIndex * viewportWidth,
+                                behavior: scrollBehavior
+                            });
+                        }
                         const activeSlide = viewerSlides[currentViewerIndex];
                         const activeImage = activeSlide ? activeSlide.querySelector('img') : null;
                         const activeVideo = activeSlide ? activeSlide.querySelector('video') : null;
@@ -1047,18 +1155,47 @@
                         scheduleViewerAutoplay();
                     }
 
+                    function syncViewerIndexFromScroll() {
+                        if (!viewerStage || !viewerSlides.length || !isMobileViewerMode() || !viewer.classList.contains('open')) return;
+                        const viewportWidth = getViewerViewportWidth();
+                        const nextIndex = Math.max(0, Math.min(
+                            Math.round(viewerStage.scrollLeft / viewportWidth),
+                            viewerSlides.length - 1
+                        ));
+                        if (nextIndex !== currentViewerIndex) {
+                            renderViewerSlide(nextIndex, { syncScroll: false });
+                        }
+                        clearViewerScrollDebounceTimer();
+                        viewerScrollDebounceTimer = setTimeout(function() {
+                            scheduleViewerAutoplay();
+                        }, 140);
+                    }
+
                     function openFullscreenViewer(index) {
                         if (!viewerSlides.length) return;
                         const parsedIndex = Number(index);
                         if (!Number.isInteger(parsedIndex) || parsedIndex < 0 || parsedIndex >= viewerSlides.length) return;
+                        viewerScrollTop = window.scrollY || window.pageYOffset || 0;
+                        previousBodyOverflow = document.body.style.overflow;
+                        previousBodyPosition = document.body.style.position;
+                        previousBodyTop = document.body.style.top;
+                        previousBodyWidth = document.body.style.width;
                         viewer.classList.add('open');
                         document.body.style.overflow = 'hidden';
+                        document.body.style.position = 'fixed';
+                        document.body.style.top = `-${viewerScrollTop}px`;
+                        document.body.style.width = '100%';
                         renderViewerSlide(parsedIndex);
                     }
                     function closeFullscreenViewer() {
                         viewer.classList.remove('open');
-                        document.body.style.overflow = '';
+                        document.body.style.overflow = previousBodyOverflow;
+                        document.body.style.position = previousBodyPosition;
+                        document.body.style.top = previousBodyTop;
+                        document.body.style.width = previousBodyWidth;
+                        window.scrollTo(0, viewerScrollTop);
                         clearViewerAutoplayTimer();
+                        clearViewerScrollDebounceTimer();
                     }
                     function showNextViewerPhoto(event) {
                         if (event) event.stopPropagation();
@@ -1077,6 +1214,60 @@
                     function toggleViewerRandom(event) {
                         if (event) event.stopPropagation();
                         setViewerRandomState(!viewerRandom);
+                    }
+                    function handleViewerSwipeByDelta(deltaX, deltaY) {
+                        if (viewerSlides.length <= 1) return;
+                        if (Math.abs(deltaX) < viewerSwipeThreshold) return;
+                        if (Math.abs(deltaX) <= Math.abs(deltaY)) return;
+                        if (deltaX < 0) {
+                            showNextViewerPhoto();
+                            return;
+                        }
+                        showPreviousViewerPhoto();
+                    }
+                    function onViewerTouchStart(event) {
+                        if (!viewer.classList.contains('open')) return;
+                        const touch = event.touches && event.touches[0];
+                        if (!touch) return;
+                        viewerTouchStartX = touch.clientX;
+                        viewerTouchStartY = touch.clientY;
+                        viewerTouchCurrentX = touch.clientX;
+                        viewerTouchCurrentY = touch.clientY;
+                        viewerTouchTracking = true;
+                        viewerTouchHorizontalGesture = false;
+                    }
+                    function onViewerTouchMove(event) {
+                        if (!viewerTouchTracking) return;
+                        const touch = event.touches && event.touches[0];
+                        if (!touch) return;
+                        viewerTouchCurrentX = touch.clientX;
+                        viewerTouchCurrentY = touch.clientY;
+                        const deltaX = viewerTouchCurrentX - viewerTouchStartX;
+                        const deltaY = viewerTouchCurrentY - viewerTouchStartY;
+                        if (!viewerTouchHorizontalGesture && Math.abs(deltaX) >= viewerSwipeLockThreshold && Math.abs(deltaX) > Math.abs(deltaY)) {
+                            viewerTouchHorizontalGesture = true;
+                        }
+                        if (viewerTouchHorizontalGesture) {
+                            event.preventDefault();
+                        }
+                    }
+                    function onViewerTouchEnd() {
+                        if (!viewerTouchTracking) return;
+                        handleViewerSwipeByDelta(viewerTouchCurrentX - viewerTouchStartX, viewerTouchCurrentY - viewerTouchStartY);
+                        viewerTouchTracking = false;
+                        viewerTouchHorizontalGesture = false;
+                    }
+                    function onViewerPointerDown(event) {
+                        if (!viewer.classList.contains('open')) return;
+                        if (event.pointerType === 'mouse') return;
+                        viewerPointerStartX = event.clientX;
+                        viewerPointerStartY = event.clientY;
+                        viewerPointerTracking = true;
+                    }
+                    function onViewerPointerUp(event) {
+                        if (!viewerPointerTracking) return;
+                        viewerPointerTracking = false;
+                        handleViewerSwipeByDelta(event.clientX - viewerPointerStartX, event.clientY - viewerPointerStartY);
                     }
                     if (galleryGrid) {
                         galleryGrid.addEventListener('click', function(event) {
@@ -1104,6 +1295,19 @@
                             closeFullscreenViewer();
                         }
                     });
+                    if (viewerStage) {
+                        viewerStage.addEventListener('touchstart', onViewerTouchStart, { passive: true });
+                        viewerStage.addEventListener('touchmove', onViewerTouchMove, { passive: false });
+                        viewerStage.addEventListener('touchend', onViewerTouchEnd, { passive: true });
+                        viewerStage.addEventListener('touchcancel', onViewerTouchEnd, { passive: true });
+                        if (window.PointerEvent && !('ontouchstart' in window)) {
+                            viewerStage.addEventListener('pointerdown', onViewerPointerDown);
+                            viewerStage.addEventListener('pointerup', onViewerPointerUp);
+                            viewerStage.addEventListener('pointercancel', function() {
+                                viewerPointerTracking = false;
+                            });
+                        }
+                    }
                     window.addEventListener('keydown', function(event) {
                         if (!viewer.classList.contains('open')) return;
 
@@ -1155,11 +1359,14 @@
 
             const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
+            const [characterSearchTerm, setCharacterSearchTerm] = useState('');
+            const [selectedCharacterId, setSelectedCharacterId] = useState(null);
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
             const [arenaBattleState, setArenaBattleState] = useState({});
             const [arenaGlobalState, setArenaGlobalState] = useState({});
+            const [globalMedia, setGlobalMedia] = useState([]);
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
@@ -1723,6 +1930,14 @@ const getInitialCatFormData = () => ({
                 arenaGlobalRef.on('value', (snapshot) => {
                     setArenaGlobalState(snapshot.val() || {});
                 });
+                const escenasFotosRef = db.ref('escenasFotos');
+                escenasFotosRef.on('value', (snapshot) => {
+                    const data = snapshot.val() || {};
+                    const normalizedMedia = Object.entries(data)
+                        .map(([itemId, item]) => normalizeGlobalMediaItem(itemId, item))
+                        .filter((item) => item.url);
+                    setGlobalMedia(normalizedMedia);
+                });
 
                 return () => {
                     window.removeEventListener('message', handleMessage);
@@ -1730,6 +1945,7 @@ const getInitialCatFormData = () => ({
                     categoriasRef.off();
                     arenasRef.off();
                     arenaGlobalRef.off();
+                    escenasFotosRef.off();
                 };
             }, []);
 
@@ -1808,7 +2024,7 @@ const getInitialCatFormData = () => ({
                 }, {});
             }, [perfiles, categorias]);
             const allGalleryPhotos = useMemo(() => {
-                return (perfiles || []).flatMap((perfil) => {
+                const profileGalleryPhotos = (perfiles || []).flatMap((perfil) => {
                     const galleryItems = [
                         ...(Array.isArray(perfil?.galeria?.fotos)
                             ? perfil.galeria.fotos.map((item, sourceIndex) => ({
@@ -1855,7 +2071,32 @@ const getInitialCatFormData = () => ({
                         })
                         .filter(Boolean);
                 });
-            }, [perfiles]);
+                const sharedGlobalMediaPhotos = (globalMedia || [])
+                    .map((item, index) => {
+                        if (!item?.url) return null;
+                        const type = detectGalleryItemType(item.url, item.type || '');
+                        const embedInfo = type === 'video' ? (item.embedInfo || getVideoEmbedInfo(item.url)) : null;
+                        return {
+                            id: `escenasFotos-${item.id || index}`,
+                            url: item.url,
+                            label: '',
+                            type,
+                            isGif: type === 'image' && isGifUrl(item.url),
+                            nombre: item.category ? `Escena · ${item.category}` : 'Escena global',
+                            profesion: item.source === 'file' ? 'Escena (archivo)' : 'Escena (url)',
+                            nacionalidad: '',
+                            fotoPerfil: item.url,
+                            profileId: null,
+                            sourceTag: 'escenasFotos',
+                            sourceIndex: index,
+                            createdAt: item.createdAt || 0,
+                            embedInfo
+                        };
+                    })
+                    .filter(Boolean);
+
+                return [...profileGalleryPhotos, ...sharedGlobalMediaPhotos];
+            }, [perfiles, globalMedia]);
             const galleryBuckets = useMemo(() => {
                 if (galleryViewMode === 'GENERAL') {
                     return [{
@@ -3311,6 +3552,32 @@ const saveProfile = (e) => {
 
                 return sortDirection === 'asc' ? result : -result;
             });
+            const filteredCharacterProfiles = useMemo(() => {
+                const normalizedSearchTerm = normalizeSearchValue(characterSearchTerm);
+                return (perfiles || []).filter((profile) => {
+                    const normalizedName = normalizeSearchValue(profile?.nombre || '');
+                    if (!normalizedSearchTerm) return Boolean(normalizedName);
+                    return normalizedName.includes(normalizedSearchTerm);
+                });
+            }, [perfiles, characterSearchTerm]);
+            const selectedCharacterProfile = useMemo(() => (
+                (perfiles || []).find((profile) => profile?.firebaseId === selectedCharacterId) || null
+            ), [perfiles, selectedCharacterId]);
+            const selectedCharacterRankingPosition = useMemo(() => {
+                if (!selectedCharacterProfile?.firebaseId) return null;
+                const rankingIndex = sortedProfiles.findIndex((profile) => profile?.firebaseId === selectedCharacterProfile.firebaseId);
+                return rankingIndex >= 0 ? rankingIndex + 1 : null;
+            }, [sortedProfiles, selectedCharacterProfile]);
+
+            useEffect(() => {
+                if (!filteredCharacterProfiles.length) {
+                    if (selectedCharacterId !== null) setSelectedCharacterId(null);
+                    return;
+                }
+                if (!selectedCharacterId || !filteredCharacterProfiles.some((profile) => profile?.firebaseId === selectedCharacterId)) {
+                    setSelectedCharacterId(filteredCharacterProfiles[0].firebaseId);
+                }
+            }, [filteredCharacterProfiles, selectedCharacterId]);
             return (
                 <div className="app-space-theme flex h-screen overflow-hidden bg-[#020617] stone-wall-surface relative">
                     {isSidebarOpen && (
@@ -3331,11 +3598,13 @@ const saveProfile = (e) => {
                         <nav className="flex-1 space-y-2 mb-8">
                             {[
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
+                                { id: 'PERSONAJE', icon: 'user-round-search', label: 'Personaje' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
+                                { id: 'PERSONAJE', icon: 'user', label: 'Personaje' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
                                 { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
                                 { id: 'GALERIA', icon: 'images', label: 'Galería' },
-                                { id: 'ESCENAS_FOTOS', icon: 'clapperboard', label: 'Escenas' }
+                                { id: 'ESCENAS_FOTOS', icon: 'gallery-horizontal', label: 'Escenas/Fotos' }
                             ].map(item => (
                                 <button
                                     key={item.id}
@@ -3344,6 +3613,9 @@ const saveProfile = (e) => {
                                         setSelectedCategory(null);
                                         setSelectedGalleryBucket(null);
                                         setSelectedGalleryIndex(null);
+                                        setSelectedCharacterBucketIds([]);
+                                        setSelectedTagLabels([]);
+                                        setGalleryFilterLabel('INICIAL');
                                     }}
                                     className={`btn-metal sidebar-nav-btn w-full flex items-center gap-4 px-6 py-4 rounded-[2rem] text-sm transition-all ${activeTab === item.id ? 'is-active text-[#ecfeff]' : 'text-slate-900'}`}
                                 >
@@ -3484,73 +3756,15 @@ const saveProfile = (e) => {
                         </div>
                     )}
 
-                    {activeTab === 'ESCENAS_FOTOS' && !selectedCategory && (
-                        <div className="space-y-8 animate-in fade-in duration-500 max-w-4xl">
-                            <div>
-                                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Escenas</h2>
-                                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Carga rápida de fotos, gifs y videos</p>
-                            </div>
-
-                            <div className="hud-frame hud-frame--panel theme-surface-card rounded-3xl p-8 space-y-5 border theme-border-secondary">
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">URL de escena</label>
-                                    <input
-                                        type="url"
-                                        placeholder="https://archivo.com/escena.jpg"
-                                        value={sceneUrlInput}
-                                        onChange={(event) => setSceneUrlInput(event.target.value)}
-                                        className="w-full theme-surface-soft border theme-border-secondary p-4 rounded-xl outline-none text-white font-bold text-xs"
-                                    />
-                                </div>
-
-                                <div className="space-y-2">
-                                    <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Archivo local (CPU/dispositivo)</label>
-                                    <input
-                                        type="file"
-                                        accept="image/*,video/*,.gif"
-                                        onChange={handleLocalSceneFileUpload}
-                                        className="w-full theme-surface-soft border border-dashed theme-border-secondary p-4 rounded-xl outline-none text-slate-200 font-semibold text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-cyan-500/20 file:px-3 file:py-2 file:text-cyan-200 file:font-black"
-                                    />
-                                    {sceneFileInput && (
-                                        <p className="text-[10px] text-emerald-300 font-bold uppercase tracking-[0.15em]">Archivo listo para guardar.</p>
-                                    )}
-                                </div>
-
-                                <div className="grid gap-4 md:grid-cols-2">
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Categoría</label>
-                                        <select
-                                            value={sceneCategory}
-                                            onChange={(event) => setSceneCategory(event.target.value)}
-                                            className="w-full theme-surface-soft border theme-border-secondary px-4 py-4 rounded-xl outline-none text-white font-black text-xs"
-                                        >
-                                            <option value="">Seleccionar categoría...</option>
-                                            {sceneCategoryOptions.map((option) => (
-                                                <option key={option} value={option}>{option}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-
-                                    <div className="space-y-2">
-                                        <label className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Tipo</label>
-                                        <select
-                                            value={sceneType}
-                                            onChange={(event) => setSceneType(event.target.value)}
-                                            className="w-full theme-surface-soft border theme-border-secondary px-4 py-4 rounded-xl outline-none text-white font-black text-xs uppercase"
-                                        >
-                                            <option value="image">Image</option>
-                                            <option value="gif">Gif</option>
-                                            <option value="video">Video</option>
-                                        </select>
-                                    </div>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={submitScenePhoto}
-                                    className="btn-metal btn-metal--gold px-8 py-4 rounded-xl text-xs"
-                                >
-                                    Guardar escena
+                    {activeTab === 'PERSONAJE' && !selectedCategory && (
+                        <div className="theme-surface-card gothic-frame gothic-frame--ornate rounded-[2rem] p-8 md:p-10 animate-in fade-in duration-500">
+                            <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Personaje</h2>
+                            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-2">
+                                Espacio listo para construir la vista de personaje con el estilo actual.
+                            </p>
+                            <div className="mt-8">
+                                <button type="button" className="btn-metal btn-metal--gold px-6 py-3 rounded-2xl text-xs">
+                                    Próximamente
                                 </button>
                             </div>
                         </div>
@@ -4298,6 +4512,20 @@ const saveProfile = (e) => {
         </div>
     )}
 
+    {activeTab === 'ESCENAS_FOTOS' && !selectedCategory && (
+        <div className="theme-surface-card gothic-frame gothic-frame--ornate rounded-[2rem] p-8 md:p-10 animate-in fade-in duration-500">
+            <h2 className="neon-sign neon-sign--magenta text-4xl font-black italic text-white uppercase tracking-tighter">Escenas/Fotos</h2>
+            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-2">
+                Nuevo bloque preparado para escenas multimedia sin afectar los tabs existentes.
+            </p>
+            <div className="mt-8">
+                <button type="button" className="btn-metal btn-metal--silver px-6 py-3 rounded-2xl text-xs text-slate-900">
+                    Configurar contenido
+                </button>
+            </div>
+        </div>
+    )}
+
     {/* 3. VISTA BATALLAS */}
     {activeTab === 'BATALLAS' && !selectedCategory && !selectedArena && (
         <div className="space-y-10 animate-in fade-in duration-500">
@@ -4773,68 +5001,69 @@ const saveProfile = (e) => {
                 </tbody>
             </table>
 
-            {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
-                const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
-                return (
-                    <div
-                        className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-                        onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
-                    >
-                        <div
-                            className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
-                            onClick={(event) => event.stopPropagation()}
-                        >
-                            <div className="flex items-start justify-between gap-4 mb-6">
-                                <div>
-                                    <h3 className="font-title text-xl font-black text-white tracking-wide">
-                                        {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
-                                    </h3>
-                                    <p className="text-xs text-slate-300 mt-1">
-                                        Detalle de enfrentamientos ganados y perdidos.
-                                    </p>
-                                </div>
-                                <button
-                                    type="button"
-                                    onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
-                                    className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
-                                >
-                                    Cerrar
-                                </button>
-                            </div>
-
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
-                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
-                                    {breakdown.wins.length ? (
-                                        <ul className="space-y-2">
-                                            {breakdown.wins.map((name, idx) => (
-                                                <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
-                                    )}
-                                </div>
-
-                                <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
-                                    <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
-                                    {breakdown.losses.length ? (
-                                        <ul className="space-y-2">
-                                            {breakdown.losses.map((name, idx) => (
-                                                <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
-                                            ))}
-                                        </ul>
-                                    ) : (
-                                        <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
         </div>
     )}
+
+    {scoreBreakdownModal.isOpen && scoreBreakdownModal.profile && scoreBreakdownModal.category && (() => {
+        const breakdown = getScoreBreakdownByCategory(scoreBreakdownModal.profile.firebaseId, scoreBreakdownModal.category);
+        return (
+            <div
+                className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+                onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+            >
+                <div
+                    className="w-full max-w-3xl theme-surface-card border theme-border-secondary rounded-2xl p-6"
+                    onClick={(event) => event.stopPropagation()}
+                >
+                    <div className="flex items-start justify-between gap-4 mb-6">
+                        <div>
+                            <h3 className="font-title text-xl font-black text-white tracking-wide">
+                                {scoreBreakdownModal.profile.nombre} · {scoreBreakdownModal.category}
+                            </h3>
+                            <p className="text-xs text-slate-300 mt-1">
+                                Detalle de enfrentamientos ganados y perdidos.
+                            </p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => setScoreBreakdownModal({ isOpen: false, profile: null, category: null })}
+                            className="btn-metal btn-metal--silver px-3 py-2 rounded-lg text-[10px] font-black"
+                        >
+                            Cerrar
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="rounded-xl border border-emerald-500/40 bg-emerald-950/20 p-4 min-h-44">
+                            <h4 className="text-xs font-black uppercase tracking-[0.16em] text-emerald-300 mb-3">Ganó contra</h4>
+                            {breakdown.wins.length ? (
+                                <ul className="space-y-2">
+                                    {breakdown.wins.map((name, idx) => (
+                                        <li key={`win-${name}-${idx}`} className="text-sm text-emerald-200 font-semibold">{name}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-xs text-emerald-200/70">No hay batallas ganadas registradas.</p>
+                            )}
+                        </div>
+
+                        <div className="rounded-xl border border-rose-500/40 bg-rose-950/20 p-4 min-h-44">
+                            <h4 className="text-xs font-black uppercase tracking-[0.16em] text-rose-300 mb-3">Perdió contra</h4>
+                            {breakdown.losses.length ? (
+                                <ul className="space-y-2">
+                                    {breakdown.losses.map((name, idx) => (
+                                        <li key={`loss-${name}-${idx}`} className="text-sm text-rose-200 font-semibold">{name}</li>
+                                    ))}
+                                </ul>
+                            ) : (
+                                <p className="text-xs text-rose-200/70">No hay batallas perdidas registradas.</p>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        );
+    })()}
 
     {/* 4. VISTA CATEGORÍAS (TUS CARPETAS MANUALES) */}
     {activeTab === 'CATEGORIAS' && !selectedCategory && (
