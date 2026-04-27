@@ -174,6 +174,68 @@
             return null;
         };
         const BLOCKED_MEDIA_HOST_PATTERNS = ['eporner.com'];
+        const INSECURE_MEDIA_CLEANUP_PATH = 'mediaCleanupQueue';
+        const createInsecureMediaEntry = ({
+            originalUrl = '',
+            sanitizedUrl = '',
+            contextPath = '',
+            reason = 'unknown',
+            status = 'flagged'
+        } = {}) => ({
+            originalUrl,
+            sanitizedUrl,
+            contextPath,
+            reason,
+            status,
+            detectedAt: firebase.database.ServerValue.TIMESTAMP
+        });
+        const sanitizeMediaUrl = (rawUrl = '', fallback = '', { contextPath = '' } = {}) => {
+            const normalized = String(rawUrl || '').trim();
+            const fallbackValue = String(fallback || '').trim();
+            if (!normalized) {
+                return { url: fallbackValue, changed: normalized !== fallbackValue, flagged: false, reason: '', originalUrl: normalized };
+            }
+            if (isBlockedMediaUrl(normalized)) {
+                return {
+                    url: fallbackValue,
+                    changed: normalized !== fallbackValue,
+                    flagged: true,
+                    reason: 'blocked_host',
+                    originalUrl: normalized,
+                    contextPath
+                };
+            }
+            if (normalized.startsWith('http://')) {
+                return {
+                    url: normalized.replace(/^http:\/\//i, 'https://'),
+                    changed: true,
+                    flagged: true,
+                    reason: 'http_upgraded',
+                    originalUrl: normalized,
+                    contextPath
+                };
+            }
+            return { url: normalized, changed: false, flagged: false, reason: '', originalUrl: normalized, contextPath };
+        };
+        const queueInsecureMediaEntries = async (entries = []) => {
+            const validEntries = (entries || []).filter(Boolean);
+            if (!validEntries.length) return;
+            const cleanupRef = db.ref(INSECURE_MEDIA_CLEANUP_PATH);
+            await Promise.all(validEntries.map((entry) => cleanupRef.push(entry)));
+        };
+        const validateHttpsMediaUrl = async (url = '', mediaType = 'image') => {
+            const normalizedUrl = String(url || '').trim();
+            if (!normalizedUrl || !normalizedUrl.startsWith('https://')) return false;
+            if (mediaType === 'image') {
+                return !(await checkImageUrlIsBroken(normalizedUrl, { timeoutMs: 5000, retries: 1 }));
+            }
+            try {
+                await fetch(normalizedUrl, { method: 'HEAD', mode: 'no-cors', cache: 'no-store' });
+                return true;
+            } catch {
+                return false;
+            }
+        };
         const isBlockedMediaUrl = (rawUrl = '') => {
             const normalized = String(rawUrl || '').trim();
             if (!normalized || normalized.startsWith('data:') || normalized.startsWith('blob:')) return false;
@@ -186,9 +248,8 @@
             }
         };
         const getSafeImageSrc = (rawUrl = '', fallback = '') => {
-            const normalized = String(rawUrl || '').trim();
-            if (!normalized || isBlockedMediaUrl(normalized)) return fallback;
-            return normalized;
+            const result = sanitizeMediaUrl(rawUrl, fallback);
+            return result.url;
         };
         const normalizeSearchValue = (value = '') => (
             String(value || '')
@@ -207,25 +268,30 @@
         };
         const normalizeGalleryItem = (item, fallbackType = '') => {
             if (typeof item === 'string') {
+                const normalizedUrl = sanitizeMediaUrl(item.trim(), '');
                 return {
-                    url: getSafeImageSrc(item.trim(), ''),
+                    url: normalizedUrl.url,
                     label: '',
-                    type: detectGalleryItemType(item, fallbackType)
+                    type: detectGalleryItemType(normalizedUrl.url, fallbackType),
+                    insecureReason: normalizedUrl.flagged ? normalizedUrl.reason : ''
                 };
             }
             if (item && typeof item === 'object') {
-                const url = getSafeImageSrc((item.url || '').trim(), '');
+                const safeUrlResult = sanitizeMediaUrl((item.url || '').trim(), '');
+                const url = safeUrlResult.url;
                 return {
                     url,
                     label: GALLERY_LABELS.includes(item.label) ? item.label : '',
-                    type: detectGalleryItemType(url, item.type || fallbackType)
+                    type: detectGalleryItemType(url, item.type || fallbackType),
+                    insecureReason: safeUrlResult.flagged ? safeUrlResult.reason : ''
                 };
             }
-            return { url: '', label: '', type: detectGalleryItemType('', fallbackType) };
+            return { url: '', label: '', type: detectGalleryItemType('', fallbackType), insecureReason: '' };
         };
         const normalizeGlobalMediaItem = (itemId, item) => {
             const rawItem = item && typeof item === 'object' ? item : {};
-            const safeUrl = getSafeImageSrc((rawItem.url || '').trim(), '');
+            const safeUrlResult = sanitizeMediaUrl((rawItem.url || '').trim(), '');
+            const safeUrl = safeUrlResult.url;
             const detectedType = detectGalleryItemType(safeUrl, rawItem.type || '');
             const embedInfo = detectedType === 'video' ? getVideoEmbedInfo(safeUrl) : null;
             return {
@@ -235,7 +301,106 @@
                 category: rawItem.category || '',
                 createdAt: rawItem.createdAt || 0,
                 source: rawItem.source === 'file' ? 'file' : 'url',
-                embedInfo
+                embedInfo,
+                insecureReason: safeUrlResult.flagged ? safeUrlResult.reason : ''
+            };
+        };
+        const sanitizeAndMigrateHistoricalMedia = async () => {
+            const cleanupEntries = [];
+            const buildSanitizedUrl = async ({ url = '', fallback = '', mediaType = 'image', contextPath = '' } = {}) => {
+                const sanitized = sanitizeMediaUrl(url, fallback, { contextPath });
+                if (!sanitized.flagged) return sanitized;
+                if (sanitized.reason !== 'http_upgraded') {
+                    cleanupEntries.push(createInsecureMediaEntry({
+                        originalUrl: sanitized.originalUrl,
+                        sanitizedUrl: sanitized.url,
+                        contextPath,
+                        reason: sanitized.reason,
+                        status: 'fallback_applied'
+                    }));
+                    return sanitized;
+                }
+                const isValidHttps = await validateHttpsMediaUrl(sanitized.url, mediaType);
+                if (isValidHttps) {
+                    cleanupEntries.push(createInsecureMediaEntry({
+                        originalUrl: sanitized.originalUrl,
+                        sanitizedUrl: sanitized.url,
+                        contextPath,
+                        reason: sanitized.reason,
+                        status: 'https_migrated'
+                    }));
+                    return sanitized;
+                }
+                cleanupEntries.push(createInsecureMediaEntry({
+                    originalUrl: sanitized.originalUrl,
+                    sanitizedUrl: fallback,
+                    contextPath,
+                    reason: 'https_validation_failed',
+                    status: 'fallback_applied'
+                }));
+                return { ...sanitized, url: fallback };
+            };
+
+            const perfilesRef = db.ref('perfiles');
+            const perfilesSnapshot = await perfilesRef.once('value');
+            const perfilesData = perfilesSnapshot.val() || {};
+            const perfilUpdates = {};
+            for (const [profileId, profile] of Object.entries(perfilesData)) {
+                if (!profile || typeof profile !== 'object') continue;
+                const fotos = Array.isArray(profile.fotos) ? profile.fotos : [];
+                for (let i = 0; i < fotos.length; i++) {
+                    const currentUrl = String(fotos[i] || '').trim();
+                    const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: 'image', contextPath: `perfiles/${profileId}/fotos/${i}` });
+                    if (nextUrlResult.url !== currentUrl) perfilUpdates[`${profileId}/fotos/${i}`] = nextUrlResult.url;
+                }
+                const galleryBuckets = [
+                    { tag: 'fotos', mediaType: 'image' },
+                    { tag: 'videos', mediaType: 'video' }
+                ];
+                for (const bucket of galleryBuckets) {
+                    const items = Array.isArray(profile?.galeria?.[bucket.tag]) ? profile.galeria[bucket.tag] : [];
+                    for (let i = 0; i < items.length; i++) {
+                        const item = items[i];
+                        if (typeof item === 'string') {
+                            const currentUrl = item.trim();
+                            const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: bucket.mediaType, contextPath: `perfiles/${profileId}/galeria/${bucket.tag}/${i}` });
+                            if (nextUrlResult.url !== currentUrl) perfilUpdates[`${profileId}/galeria/${bucket.tag}/${i}`] = nextUrlResult.url;
+                            continue;
+                        }
+                        if (item && typeof item === 'object') {
+                            const currentUrl = String(item.url || '').trim();
+                            const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: bucket.mediaType, contextPath: `perfiles/${profileId}/galeria/${bucket.tag}/${i}/url` });
+                            if (nextUrlResult.url !== currentUrl) perfilUpdates[`${profileId}/galeria/${bucket.tag}/${i}/url`] = nextUrlResult.url;
+                        }
+                    }
+                }
+                const prefs = profile?.batallaFotosPreferidas && typeof profile.batallaFotosPreferidas === 'object'
+                    ? profile.batallaFotosPreferidas
+                    : {};
+                for (const [slotId, slotUrl] of Object.entries(prefs)) {
+                    const currentUrl = String(slotUrl || '').trim();
+                    const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: 'image', contextPath: `perfiles/${profileId}/batallaFotosPreferidas/${slotId}` });
+                    if (nextUrlResult.url !== currentUrl) perfilUpdates[`${profileId}/batallaFotosPreferidas/${slotId}`] = nextUrlResult.url;
+                }
+            }
+            if (Object.keys(perfilUpdates).length) await perfilesRef.update(perfilUpdates);
+
+            const escenasRef = db.ref('escenasFotos');
+            const escenasSnapshot = await escenasRef.once('value');
+            const escenasData = escenasSnapshot.val() || {};
+            const escenasUpdates = {};
+            for (const [itemId, item] of Object.entries(escenasData)) {
+                if (!item || typeof item !== 'object') continue;
+                const currentUrl = String(item.url || '').trim();
+                const nextUrlResult = await buildSanitizedUrl({ url: currentUrl, fallback: '', mediaType: item.type || 'image', contextPath: `escenasFotos/${itemId}/url` });
+                if (nextUrlResult.url !== currentUrl) escenasUpdates[`${itemId}/url`] = nextUrlResult.url;
+            }
+            if (Object.keys(escenasUpdates).length) await escenasRef.update(escenasUpdates);
+            await queueInsecureMediaEntries(cleanupEntries);
+            return {
+                perfilesUpdated: Object.keys(perfilUpdates).length,
+                escenasUpdated: Object.keys(escenasUpdates).length,
+                insecureLogged: cleanupEntries.length
             };
         };
         const getGalleryItemUrl = (item) => normalizeGalleryItem(item).url;
@@ -1340,6 +1505,7 @@
         const App = () => {
             const [carpetaAbierta, setCarpetaAbierta] = React.useState(null);
             const galleryWindowRef = useRef(null);
+            const mediaSanitizationStartedRef = useRef(false);
             const contextMenuRef = useRef(null);
             const [perfiles, setPerfiles] = useState([]);
                 const neonColors = {
@@ -1796,6 +1962,19 @@ const getInitialCatFormData = () => ({
             }, [editingId, formData.nombre, formData.profesion, formData.galeria?.fotos, formData.galeria?.videos, formData.batallaFotosPreferidas]);
 
             useEffect(() => {
+                if (!mediaSanitizationStartedRef.current) {
+                    mediaSanitizationStartedRef.current = true;
+                    sanitizeAndMigrateHistoricalMedia()
+                        .then((summary) => {
+                            if (summary.insecureLogged || summary.perfilesUpdated || summary.escenasUpdated) {
+                                console.info('Migración de medios HTTP completada:', summary);
+                            }
+                        })
+                        .catch((error) => {
+                            console.error('No se pudo completar la migración de medios HTTP:', error);
+                        });
+                }
+
                 const handleMessage = async (event) => {
                     if (event.data.type === 'ADD_IMAGE') {
                         const { url, id, label, mediaType } = event.data;
