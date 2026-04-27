@@ -242,8 +242,8 @@
         const getGalleryItemLabel = (item) => normalizeGalleryItem(item).label;
         const getGalleryItemType = (item) => normalizeGalleryItem(item).type;
         const checkImageUrlIsBroken = async (url = '', {
-            timeoutMs = 12000,
-            retries = 1
+            timeoutMs = 5000,
+            retries = 0
         } = {}) => {
             const normalizedUrl = String(url || '').trim();
             if (!normalizedUrl) return true;
@@ -1410,6 +1410,7 @@
             const [brokenGalleryUrlDrafts, setBrokenGalleryUrlDrafts] = useState({});
             const [brokenGallerySavingMap, setBrokenGallerySavingMap] = useState({});
             const [brokenGalleryEditingMap, setBrokenGalleryEditingMap] = useState({});
+            const [isCheckingBrokenGallery, setIsCheckingBrokenGallery] = useState(false);
             const galleryPlaybackTimeoutRef = useRef(null);
             const scenePlaybackTimeoutRef = useRef(null);
 
@@ -2411,15 +2412,18 @@ const getInitialCatFormData = () => ({
                 };
             }, [contextMenuOpen]);
             useEffect(() => {
+                if (!isBrokenGalleryModalOpen) return;
                 let isCancelled = false;
                 const imagePhotos = allGalleryPhotos.filter((photo) => photo.type === 'image' && photo.url);
 
                 if (!imagePhotos.length) {
                     setBrokenGalleryMap({});
+                    setIsCheckingBrokenGallery(false);
                     return;
                 }
 
                 const run = async () => {
+                    setIsCheckingBrokenGallery(true);
                     const concurrency = 8;
                     const results = [];
 
@@ -2441,11 +2445,14 @@ const getInitialCatFormData = () => ({
                         return acc;
                     }, {});
                     setBrokenGalleryMap(nextMap);
+                    if (!isCancelled) setIsCheckingBrokenGallery(false);
                 };
 
                 run();
-                return () => { isCancelled = true; };
-            }, [allGalleryPhotos]);
+                return () => {
+                    isCancelled = true;
+                };
+            }, [isBrokenGalleryModalOpen, allGalleryPhotos]);
             useEffect(() => {
                 if (!isBrokenGalleryModalOpen) return;
                 const nextDrafts = brokenGalleryPhotos.reduce((acc, photo) => {
@@ -4184,7 +4191,7 @@ const saveProfile = (e) => {
                         title="Ver y corregir fotos rotas"
                     >
                         <span className="text-sm leading-none">💔</span>
-                        Rotas ({brokenGalleryPhotos.length})
+                        Rotas ({isCheckingBrokenGallery ? '...' : brokenGalleryPhotos.length})
                     </button>
                 </div>
 
@@ -4874,7 +4881,9 @@ const saveProfile = (e) => {
                             <div>
                                 <p className="text-2xl font-black italic text-white tracking-tighter">Fotos rotas</p>
                                 <p className="text-[10px] font-black uppercase tracking-[0.25em] text-[var(--metal-gold)] mt-2">
-                                    {brokenGalleryPhotos.length} enlace{brokenGalleryPhotos.length === 1 ? '' : 's'} sin vista
+                                    {isCheckingBrokenGallery
+                                        ? 'Analizando enlaces...'
+                                        : `${brokenGalleryPhotos.length} enlace${brokenGalleryPhotos.length === 1 ? '' : 's'} sin vista`}
                                 </p>
                             </div>
                             <button
