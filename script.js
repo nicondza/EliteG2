@@ -1138,6 +1138,7 @@
             const [selectedArena, setSelectedArena] = useState(null);
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [arenaBattleState, setArenaBattleState] = useState({});
+            const [arenaParticipantMode, setArenaParticipantMode] = useState('GENERAL');
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
@@ -2302,16 +2303,96 @@ const saveProfile = (e) => {
                 return `${Math.round(numericHeight)} cm`;
             };
 
-            const findNextPendingPair = (ids = [], playedMatchups = {}) => {
-                for (let i = 0; i < ids.length - 1; i++) {
-                    for (let j = i + 1; j < ids.length; j++) {
-                        const key = [ids[i], ids[j]].sort().join('__');
-                        if (!playedMatchups[key]) {
-                            return [ids[i], ids[j]];
-                        }
+            const normalizeGroupingValue = (value = '') => String(value || '').trim().toLowerCase();
+            const formatGroupingLabel = (value = '') => String(value || '').trim();
+            const buildArenaParticipants = (profiles = [], mode = 'GENERAL') => {
+                const baseProfiles = [...(profiles || [])]
+                    .filter((profile) => profile?.firebaseId && (profile?.nombre || '').trim())
+                    .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
+
+                if (mode === 'GENERAL') {
+                    const ids = baseProfiles.map((profile) => profile.firebaseId);
+                    return {
+                        groupedIds: ids.length > 1
+                            ? [{ key: 'general', label: 'General', typeLabel: 'General', ids }]
+                            : [],
+                        orderedIds: ids
+                    };
+                }
+
+                if (mode === 'EDADES') {
+                    const ageBuckets = {
+                        '18-28': { key: '18-28', label: '18–28', typeLabel: 'Edad', ids: [] },
+                        '29-39': { key: '29-39', label: '29–39', typeLabel: 'Edad', ids: [] },
+                        '40+': { key: '40+', label: '40+', typeLabel: 'Edad', ids: [] }
+                    };
+
+                    baseProfiles.forEach((profile) => {
+                        const age = calcularEdad(profile.fechaNacimiento);
+                        if (!Number.isFinite(age) || age < 18) return;
+                        if (age <= 28) ageBuckets['18-28'].ids.push(profile.firebaseId);
+                        else if (age <= 39) ageBuckets['29-39'].ids.push(profile.firebaseId);
+                        else ageBuckets['40+'].ids.push(profile.firebaseId);
+                    });
+
+                    const groupedIds = Object.values(ageBuckets)
+                        .filter((group) => group.ids.length >= 2);
+
+                    return {
+                        groupedIds,
+                        orderedIds: groupedIds.flatMap((group) => group.ids)
+                    };
+                }
+
+                const field = mode === 'NACIONALIDADES' ? 'nacionalidad' : 'profesion';
+                const typeLabel = mode === 'NACIONALIDADES' ? 'Nacionalidad' : 'Profesión';
+                const groupedMap = baseProfiles.reduce((acc, profile) => {
+                    const normalizedValue = normalizeGroupingValue(profile?.[field]);
+                    if (!normalizedValue) return acc;
+                    if (!acc[normalizedValue]) {
+                        acc[normalizedValue] = {
+                            key: normalizedValue,
+                            label: formatGroupingLabel(profile?.[field]) || normalizedValue,
+                            typeLabel,
+                            ids: []
+                        };
+                    }
+                    acc[normalizedValue].ids.push(profile.firebaseId);
+                    return acc;
+                }, {});
+
+                const groupedIds = Object.values(groupedMap)
+                    .filter((group) => group.ids.length >= 2)
+                    .sort((a, b) => a.label.localeCompare(b.label, 'es', { sensitivity: 'base' }));
+
+                return {
+                    groupedIds,
+                    orderedIds: groupedIds.flatMap((group) => group.ids)
+                };
+            };
+            const findNextPendingPairInGroup = (groupIds = [], playedMatchups = {}) => {
+                for (let i = 0; i < groupIds.length - 1; i++) {
+                    for (let j = i + 1; j < groupIds.length; j++) {
+                        const key = [groupIds[i], groupIds[j]].sort().join('__');
+                        if (!playedMatchups[key]) return [groupIds[i], groupIds[j]];
                     }
                 }
                 return null;
+            };
+            const findNextPendingPairByGroups = (groupedIds = [], playedMatchups = {}) => {
+                for (const group of groupedIds) {
+                    const nextPair = findNextPendingPairInGroup(group?.ids || [], playedMatchups);
+                    if (nextPair) return nextPair;
+                }
+                return null;
+            };
+            const getGroupForPair = (groupedIds = [], profileAId, profileBId = '') => {
+                if (!profileAId) return null;
+                return groupedIds.find((group) => {
+                    const ids = group?.ids || [];
+                    if (!ids.includes(profileAId)) return false;
+                    return !profileBId || ids.includes(profileBId);
+                }) || null;
             };
 
             const rebuildArenaStatsFromMatchups = (matchups = {}) => {
@@ -2340,39 +2421,40 @@ const saveProfile = (e) => {
 
             const normalizeArenaState = (arenaState) => {
                 if (!arenaState) return null;
-
-                const profileIds = new Set(
-                    (perfiles || [])
-                        .filter(p => p?.firebaseId && (p?.nombre || '').trim())
-                        .map(p => p.firebaseId)
-                );
-                const orderedIds = (arenaState.orderedIds || []).filter(id => profileIds.has(id));
+                const mode = ARENA_PARTICIPANT_MODES.includes(arenaState.mode) ? arenaState.mode : 'GENERAL';
+                const participants = buildArenaParticipants(perfiles, mode);
+                const groupedIds = participants.groupedIds || [];
+                const orderedIds = participants.orderedIds || [];
                 const stats = arenaState.stats || {};
                 const matchups = arenaState.matchups || {};
                 const currentChampionId = arenaState.championId;
                 const currentChallengerId = arenaState.challengerId;
+                const currentGroup = getGroupForPair(groupedIds, currentChampionId, currentChallengerId);
                 const currentPairIsValid = (
                     !!currentChampionId &&
                     !!currentChallengerId &&
                     currentChampionId !== currentChallengerId &&
-                    orderedIds.includes(currentChampionId) &&
-                    orderedIds.includes(currentChallengerId) &&
+                    !!currentGroup &&
                     !matchups[[currentChampionId, currentChallengerId].sort().join('__')]
                 );
-
-                const nextPendingPair = orderedIds.length > 1 ? findNextPendingPair(orderedIds, matchups) : null;
+                const nextPendingPair = groupedIds.length ? findNextPendingPairByGroups(groupedIds, matchups) : null;
                 const nextPair = currentPairIsValid
                     ? [currentChampionId, currentChallengerId]
                     : nextPendingPair;
                 const isFinished = !nextPendingPair;
+                const activeGroup = getGroupForPair(groupedIds, nextPair?.[0], nextPair?.[1]);
 
                 return {
                     ...arenaState,
+                    mode,
+                    groupedIds,
                     orderedIds,
                     stats,
                     matchups,
                     championId: nextPair ? nextPair[0] : null,
                     challengerId: nextPair ? nextPair[1] : null,
+                    activeGroupKey: activeGroup?.key || null,
+                    activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
                     isFinished
                 };
             };
@@ -2428,15 +2510,20 @@ const saveProfile = (e) => {
 
                 const orderedIds = orderedProfiles.map(p => p.firebaseId);
                 const matchups = {};
-                const initialPair = findNextPendingPair(orderedIds, matchups);
+                const initialPair = findNextPendingPairByGroups(groupedIds, matchups);
                 if (!initialPair) return;
+                const activeGroup = getGroupForPair(groupedIds, initialPair[0], initialPair[1]);
 
                 const nextArenaState = {
+                    mode: arenaParticipantMode,
+                    groupedIds,
                     orderedIds,
                     stats: {},
                     matchups,
                     championId: initialPair[0],
                     challengerId: initialPair[1],
+                    activeGroupKey: activeGroup?.key || null,
+                    activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
                     isFinished: false
                 };
                 const arenaKey = getArenaBattleKey(arenaName, scopeId);
@@ -2465,7 +2552,10 @@ const saveProfile = (e) => {
                 const state = arenaBattleState[arenaKey];
                 if (!state || state.isFinished) return;
 
-                const { orderedIds = [], championId, challengerId, matchups = {}, stats = {} } = state;
+                const groupedIds = Array.isArray(state.groupedIds) && state.groupedIds.length
+                    ? state.groupedIds
+                    : buildArenaParticipants(perfiles, state.mode || 'GENERAL').groupedIds;
+                const { championId, challengerId, matchups = {}, stats = {} } = state;
                 if (winnerId !== championId && winnerId !== challengerId) return;
                 const loserId = winnerId === championId ? challengerId : championId;
                 if (!winnerId || !loserId) return;
@@ -2512,6 +2602,7 @@ const saveProfile = (e) => {
                 updateProfileArenaScore(winnerId, arenaName, winnerScore);
                 updateProfileArenaScore(loserId, arenaName, loserScore);
 
+                const winnerGroup = getGroupForPair(groupedIds, winnerId, loserId);
                 const findNextOpponentForWinner = (ids, currentWinnerId, playedMatchups) => {
                     if (!currentWinnerId) return null;
 
@@ -2525,30 +2616,21 @@ const saveProfile = (e) => {
 
                     return null;
                 };
-
-                const findNextPendingPair = (ids, playedMatchups) => {
-                    for (let i = 0; i < ids.length - 1; i++) {
-                        for (let j = i + 1; j < ids.length; j++) {
-                            const key = [ids[i], ids[j]].sort().join('__');
-                            if (!playedMatchups[key]) {
-                                return [ids[i], ids[j]];
-                            }
-                        }
-                    }
-                    return null;
-                };
-
-                const winnerNextOpponentId = findNextOpponentForWinner(orderedIds, winnerId, updatedMatchups);
+                const winnerNextOpponentId = findNextOpponentForWinner(winnerGroup?.ids || [], winnerId, updatedMatchups);
                 const nextPair = winnerNextOpponentId
                     ? [winnerId, winnerNextOpponentId]
-                    : findNextPendingPair(orderedIds, updatedMatchups);
+                    : findNextPendingPairByGroups(groupedIds, updatedMatchups);
+                const activeGroup = getGroupForPair(groupedIds, nextPair?.[0], nextPair?.[1]);
 
                 const nextArenaState = {
                     ...state,
+                    groupedIds,
                     stats: updatedStats,
                     matchups: updatedMatchups,
                     championId: nextPair ? nextPair[0] : null,
                     challengerId: nextPair ? nextPair[1] : null,
+                    activeGroupKey: activeGroup?.key || null,
+                    activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
                     isFinished: !nextPair
                 };
 
@@ -3919,6 +4001,11 @@ const saveProfile = (e) => {
                         <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-400 mt-1">
                             Arena activa · Modo: {getBattleScopeLabel(selectedBattleScope)}
                         </p>
+                        {arenaState?.activeGroupLabel && (
+                            <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.18em] text-[var(--metal-gold)] mt-2">
+                                {arenaState.activeGroupLabel}
+                            </p>
+                        )}
                     </div>
                 </div>
 
