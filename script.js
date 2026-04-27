@@ -340,6 +340,23 @@
             if (!safeArena) return '';
             return `${safeScope}::${safeGroup || 'all'}::${safeArena}`;
         };
+        const getArenaGlobalKey = (arenaName = '') => String(arenaName || '').trim();
+        const parseArenaBattleKey = (arenaKey = '') => {
+            const parts = String(arenaKey || '').split('::');
+            if (parts.length < 3) {
+                return {
+                    scopeId: 'GENERAL',
+                    groupKey: 'all',
+                    arenaName: ''
+                };
+            }
+            const arenaName = parts.slice(2).join('::');
+            return {
+                scopeId: String(parts[0] || 'GENERAL').trim().toUpperCase() || 'GENERAL',
+                groupKey: String(parts[1] || 'all').trim().toLowerCase() || 'all',
+                arenaName: String(arenaName || '').trim()
+            };
+        };
         const createZeroScores = () => CARACTERISTICAS.reduce((acc, item) => {
             acc[item] = 0;
             return acc;
@@ -1141,6 +1158,7 @@
             const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [selectedBattleGroupKey, setSelectedBattleGroupKey] = useState('');
             const [arenaBattleState, setArenaBattleState] = useState({});
+            const [arenaGlobalState, setArenaGlobalState] = useState({});
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
             const [showBattleResetPanel, setShowBattleResetPanel] = useState(false);
@@ -1631,12 +1649,17 @@ const getInitialCatFormData = () => ({
                 arenasRef.on('value', (snapshot) => {
                     setArenaBattleState(snapshot.val() || {});
                 });
+                const arenaGlobalRef = db.ref('arenaGlobalState');
+                arenaGlobalRef.on('value', (snapshot) => {
+                    setArenaGlobalState(snapshot.val() || {});
+                });
 
                 return () => {
                     window.removeEventListener('message', handleMessage);
                     perfilesRef.off();
                     categoriasRef.off();
                     arenasRef.off();
+                    arenaGlobalRef.off();
                 };
             }, []);
 
@@ -2310,6 +2333,13 @@ const saveProfile = (e) => {
                     closeContextMenu();
                 }
             };
+            const getArenaStats = (arenaName, profileId, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
+                const globalKey = getArenaGlobalKey(arenaName);
+                const stats = arenaGlobalState[globalKey]?.stats?.[profileId] || { wins: 0, battles: 0 };
+                const score = stats.battles ? Math.round((stats.wins / stats.battles) * 100) : 0;
+                return { ...stats, score };
+            };
+
             const getProfileHeightLabel = (profile) => {
                 const rawHeight = profile?.estaturaCm;
                 if (rawHeight === undefined || rawHeight === null || rawHeight === '') {
@@ -2326,6 +2356,12 @@ const saveProfile = (e) => {
 
             const normalizeGroupingValue = (value = '') => String(value || '').trim().toLowerCase();
             const formatGroupingLabel = (value = '') => String(value || '').trim();
+            const getArenaOrderedProfileIds = (profiles = []) => (
+                [...(profiles || [])]
+                    .filter((profile) => profile?.firebaseId && (profile?.nombre || '').trim())
+                    .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }))
+                    .map((profile) => profile.firebaseId)
+            );
             const getBattleScopeOptions = (profiles = [], scopeId = 'GENERAL') => {
                 const mode = String(scopeId || 'GENERAL').trim().toUpperCase();
                 const orderedProfiles = [...(profiles || [])]
@@ -2486,6 +2522,20 @@ const saveProfile = (e) => {
                     stats
                 };
             };
+            const normalizeArenaGlobalState = (arenaName, rawArenaGlobalState = {}) => {
+                const globalKey = getArenaGlobalKey(arenaName);
+                if (!globalKey) return null;
+                const orderedIds = getArenaOrderedProfileIds(perfiles);
+                const derivedState = buildArenaDerivedState(
+                    rawArenaGlobalState?.directMatchups || rawArenaGlobalState?.matchups || {},
+                    orderedIds
+                );
+                return {
+                    arenaName: globalKey,
+                    orderedIds,
+                    ...derivedState
+                };
+            };
             const findNextPendingPairInGroup = (groupIds = [], playedMatchups = {}) => {
                 for (let i = 0; i < groupIds.length - 1; i++) {
                     for (let j = i + 1; j < groupIds.length; j++) {
@@ -2495,9 +2545,10 @@ const saveProfile = (e) => {
                 }
                 return null;
             };
-            const findNextPendingPairByGroups = (groupedIds = [], playedMatchups = {}) => {
+            const findNextPendingPairByGroups = (groupedIds = [], playedMatchups = {}, globalMatchups = {}) => {
+                const resolvedMatchups = { ...(playedMatchups || {}), ...(globalMatchups || {}) };
                 for (const group of groupedIds) {
-                    const nextPair = findNextPendingPairInGroup(group?.ids || [], playedMatchups);
+                    const nextPair = findNextPendingPairInGroup(group?.ids || [], resolvedMatchups);
                     if (nextPair) return nextPair;
                 }
                 return null;
@@ -2598,15 +2649,18 @@ const saveProfile = (e) => {
                 return null;
             };
 
-            const normalizeArenaState = (arenaState) => {
+            const normalizeArenaState = (arenaName, arenaState, globalStateForArena = null) => {
                 if (!arenaState) return null;
                 const mode = ARENA_PARTICIPANT_MODES.includes(arenaState.mode) ? arenaState.mode : 'GENERAL';
                 const groupKey = String(arenaState.groupKey || 'all').trim().toLowerCase() || 'all';
                 const participants = buildArenaParticipants(perfiles, mode, groupKey);
                 const groupedIds = participants.groupedIds || [];
                 const orderedIds = participants.orderedIds || [];
-                const derivedState = buildArenaDerivedState(arenaState.directMatchups || arenaState.matchups || {}, orderedIds);
-                const { directMatchups, matchups, victoryGraph, stats } = derivedState;
+                const normalizedGlobal = normalizeArenaGlobalState(arenaName, globalStateForArena || arenaGlobalState?.[getArenaGlobalKey(arenaName)] || {});
+                const directMatchups = normalizedGlobal?.directMatchups || {};
+                const globalMatchups = normalizedGlobal?.matchups || {};
+                const victoryGraph = normalizedGlobal?.victoryGraph || {};
+                const stats = normalizedGlobal?.stats || {};
                 const currentChampionId = arenaState.championId;
                 const currentChallengerId = arenaState.challengerId;
                 const currentGroup = getGroupForPair(groupedIds, currentChampionId, currentChallengerId);
@@ -2615,9 +2669,11 @@ const saveProfile = (e) => {
                     !!currentChallengerId &&
                     currentChampionId !== currentChallengerId &&
                     !!currentGroup &&
-                    !isMatchupResolved(matchups, getPairKey(currentChampionId, currentChallengerId))
+                    !isMatchupResolved(globalMatchups, getPairKey(currentChampionId, currentChallengerId))
                 );
-                const nextPendingPair = groupedIds.length ? findNextPendingPairByGroups(groupedIds, matchups) : null;
+                const nextPendingPair = groupedIds.length
+                    ? findNextPendingPairByGroups(groupedIds, arenaState.matchups || {}, globalMatchups)
+                    : null;
                 const nextPair = currentPairIsValid
                     ? [currentChampionId, currentChallengerId]
                     : nextPendingPair;
@@ -2632,7 +2688,7 @@ const saveProfile = (e) => {
                     orderedIds,
                     stats,
                     directMatchups,
-                    matchups,
+                    matchups: globalMatchups,
                     victoryGraph,
                     championId: nextPair ? nextPair[0] : null,
                     challengerId: nextPair ? nextPair[1] : null,
@@ -2649,7 +2705,8 @@ const saveProfile = (e) => {
                 const updates = [];
 
                 Object.entries(arenaBattleState || {}).forEach(([arenaKey, state]) => {
-                    const normalized = normalizeArenaState(state);
+                    const { arenaName } = parseArenaBattleKey(arenaKey);
+                    const normalized = normalizeArenaState(arenaName, state, arenaGlobalState?.[getArenaGlobalKey(arenaName)]);
                     if (!normalized) return;
 
                     const hasChanged = JSON.stringify(state) !== JSON.stringify(normalized);
@@ -2670,7 +2727,47 @@ const saveProfile = (e) => {
                 }));
 
                 Promise.all(updates).catch(() => {});
-            }, [arenaBattleState, perfiles]);
+            }, [arenaBattleState, arenaGlobalState, perfiles]);
+
+            useEffect(() => {
+                if (!perfiles.length) return;
+
+                const legacyDirectByArena = {};
+                Object.entries(arenaBattleState || {}).forEach(([arenaKey, state]) => {
+                    const { arenaName } = parseArenaBattleKey(arenaKey);
+                    const globalKey = getArenaGlobalKey(arenaName);
+                    if (!globalKey) return;
+                    if (!legacyDirectByArena[globalKey]) legacyDirectByArena[globalKey] = {};
+                    Object.entries(state?.directMatchups || {}).forEach(([pairKey, rawRecord]) => {
+                        const normalizedRecord = normalizeMatchupRecord(rawRecord);
+                        if (!normalizedRecord) return;
+                        legacyDirectByArena[globalKey][pairKey] = {
+                            winnerId: normalizedRecord.winnerId,
+                            loserId: normalizedRecord.loserId,
+                            reason: 'direct',
+                            playedAt: normalizedRecord.playedAt ?? Date.now()
+                        };
+                    });
+                });
+
+                const updates = [];
+                const localUpdates = {};
+                Object.entries(legacyDirectByArena).forEach(([arenaName, mergedDirectMatchups]) => {
+                    const globalKey = getArenaGlobalKey(arenaName);
+                    if (!globalKey || arenaGlobalState?.[globalKey]) return;
+                    const normalizedGlobal = normalizeArenaGlobalState(arenaName, { directMatchups: mergedDirectMatchups });
+                    if (!normalizedGlobal) return;
+                    localUpdates[globalKey] = normalizedGlobal;
+                    updates.push(
+                        db.ref(`arenaGlobalState/${globalKey}`).set(normalizedGlobal)
+                            .catch(error => console.error('No se pudo migrar arenaGlobalState:', error))
+                    );
+                });
+
+                if (!Object.keys(localUpdates).length) return;
+                setArenaGlobalState((prev) => ({ ...prev, ...localUpdates }));
+                Promise.all(updates).catch(() => {});
+            }, [arenaBattleState, arenaGlobalState, perfiles]);
 
             const initArenaBattle = (arenaName, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
                 const orderedProfiles = [...perfiles]
@@ -2683,8 +2780,10 @@ const saveProfile = (e) => {
                 const participants = buildArenaParticipants(orderedProfiles, mode, groupKey);
                 const groupedIds = participants.groupedIds || [];
                 const orderedIds = participants.orderedIds || [];
-                const derivedState = buildArenaDerivedState({}, orderedIds);
-                const initialPair = findNextPendingPairByGroups(groupedIds, derivedState.matchups);
+                const globalKey = getArenaGlobalKey(arenaName);
+                const normalizedGlobal = normalizeArenaGlobalState(arenaName, arenaGlobalState?.[globalKey] || {});
+                const globalMatchups = normalizedGlobal?.matchups || {};
+                const initialPair = findNextPendingPairByGroups(groupedIds, {}, globalMatchups);
                 if (!initialPair) return;
                 const activeGroup = getGroupForPair(groupedIds, initialPair[0], initialPair[1]);
 
@@ -2693,10 +2792,10 @@ const saveProfile = (e) => {
                     groupKey: String(groupKey || '').trim().toLowerCase() || 'all',
                     groupedIds,
                     orderedIds,
-                    stats: derivedState.stats,
-                    directMatchups: derivedState.directMatchups,
-                    matchups: derivedState.matchups,
-                    victoryGraph: derivedState.victoryGraph,
+                    stats: normalizedGlobal?.stats || {},
+                    directMatchups: normalizedGlobal?.directMatchups || {},
+                    matchups: globalMatchups,
+                    victoryGraph: normalizedGlobal?.victoryGraph || {},
                     championId: initialPair[0],
                     challengerId: initialPair[1],
                     activeGroupKey: activeGroup?.key || null,
@@ -2710,6 +2809,14 @@ const saveProfile = (e) => {
                     ...prev,
                     [arenaKey]: nextArenaState
                 }));
+                if (!arenaGlobalState?.[globalKey]) {
+                    setArenaGlobalState((prev) => ({
+                        ...prev,
+                        [globalKey]: normalizedGlobal
+                    }));
+                    db.ref(`arenaGlobalState/${globalKey}`).set(normalizedGlobal)
+                        .catch(error => console.error('No se pudo guardar arenaGlobalState inicial:', error));
+                }
 
                 db.ref(`arenaBattleState/${arenaKey}`).set(nextArenaState)
                     .catch(error => console.error('No se pudo guardar el estado del arena:', error));
@@ -2728,6 +2835,8 @@ const saveProfile = (e) => {
                 const arenaKey = getArenaBattleKey(arenaName, scopeId, groupKey);
                 const state = arenaBattleState[arenaKey];
                 if (!state || state.isFinished) return;
+                const globalKey = getArenaGlobalKey(arenaName);
+                const currentGlobalState = normalizeArenaGlobalState(arenaName, arenaGlobalState?.[globalKey] || {});
 
                 const groupedIds = Array.isArray(state.groupedIds) && state.groupedIds.length
                     ? state.groupedIds
@@ -2739,7 +2848,7 @@ const saveProfile = (e) => {
 
                 const pairKey = getPairKey(winnerId, loserId);
                 const updatedDirectMatchups = {
-                    ...(state.directMatchups || {}),
+                    ...(currentGlobalState?.directMatchups || {}),
                     [pairKey]: {
                         winnerId,
                         loserId,
@@ -2748,7 +2857,7 @@ const saveProfile = (e) => {
                     }
                 };
 
-                const derivedState = buildArenaDerivedState(updatedDirectMatchups, state.orderedIds || []);
+                const derivedState = buildArenaDerivedState(updatedDirectMatchups, getArenaOrderedProfileIds(perfiles));
                 const updatedMatchups = derivedState.matchups;
 
                 const winnerGroup = getGroupForPair(groupedIds, winnerId, loserId);
@@ -2768,23 +2877,29 @@ const saveProfile = (e) => {
                 const winnerNextOpponentId = findNextOpponentForWinner(winnerGroup?.ids || [], winnerId, updatedMatchups);
                 const nextPair = winnerNextOpponentId
                     ? [winnerId, winnerNextOpponentId]
-                    : findNextPendingPairByGroups(groupedIds, updatedMatchups);
+                    : findNextPendingPairByGroups(groupedIds, state.matchups || {}, updatedMatchups);
                 const activeGroup = getGroupForPair(groupedIds, nextPair?.[0], nextPair?.[1]);
-                const nextArenaBattleState = {
-                    ...arenaBattleState,
-                    [arenaKey]: {
-                        ...state,
-                        groupedIds,
-                        directMatchups: updatedDirectMatchups,
-                        stats: derivedState.stats,
-                        matchups: updatedMatchups,
-                        victoryGraph: derivedState.victoryGraph,
-                        championId: nextPair ? nextPair[0] : null,
-                        challengerId: nextPair ? nextPair[1] : null,
-                        activeGroupKey: activeGroup?.key || null,
-                        activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
-                        isFinished: !nextPair
-                    }
+                const nextGlobalState = {
+                    arenaName: globalKey,
+                    orderedIds: getArenaOrderedProfileIds(perfiles),
+                    directMatchups: derivedState.directMatchups,
+                    matchups: updatedMatchups,
+                    victoryGraph: derivedState.victoryGraph,
+                    stats: updatedStats
+                };
+
+                const nextArenaState = {
+                    ...state,
+                    groupedIds,
+                    directMatchups: nextGlobalState.directMatchups,
+                    stats: updatedStats,
+                    matchups: updatedMatchups,
+                    victoryGraph: derivedState.victoryGraph,
+                    championId: nextPair ? nextPair[0] : null,
+                    challengerId: nextPair ? nextPair[1] : null,
+                    activeGroupKey: activeGroup?.key || null,
+                    activeGroupLabel: activeGroup ? `${activeGroup.typeLabel}: ${activeGroup.label}` : '',
+                    isFinished: !nextPair
                 };
                 const globalScoreMap = buildArenaScoreMapFromGlobalStats(arenaName, nextArenaBattleState);
 
@@ -2807,8 +2922,15 @@ const saveProfile = (e) => {
                     ...prev,
                     [arenaKey]: nextArenaState
                 }));
+                setArenaGlobalState(prev => ({
+                    ...prev,
+                    [globalKey]: nextGlobalState
+                }));
 
-                db.ref(`arenaBattleState/${arenaKey}`).set(nextArenaState)
+                Promise.all([
+                    db.ref(`arenaGlobalState/${globalKey}`).set(nextGlobalState),
+                    db.ref(`arenaBattleState/${arenaKey}`).set(nextArenaState)
+                ])
                     .catch(error => console.error('No se pudo guardar avance de batallas:', error));
             };
 
@@ -2827,7 +2949,9 @@ const saveProfile = (e) => {
                         puntuaciones: createZeroScores()
                     })));
                     setArenaBattleState({});
+                    setArenaGlobalState({});
                     await db.ref('arenaBattleState').remove();
+                    await db.ref('arenaGlobalState').remove();
                     alert('Calificaciones reiniciadas en 0 para todos los items.');
                 } catch (error) {
                     console.error('No se pudieron resetear las calificaciones:', error);
@@ -2866,7 +2990,24 @@ const saveProfile = (e) => {
                         }
                     })));
 
-                    alert(`Se reseteó "${arenaName}" (${getBattleScopeLabel(scopeId)}) y se limpiaron todos sus estados de batallas.`);
+                    const arenaKey = getArenaBattleKey(arenaName, scopeId, groupKey);
+                    setArenaBattleState((prev) => {
+                        if (!prev?.[arenaKey]) return prev;
+                        const next = { ...prev };
+                        delete next[arenaKey];
+                        return next;
+                    });
+                    setArenaGlobalState((prev) => {
+                        const globalKey = getArenaGlobalKey(arenaName);
+                        if (!prev?.[globalKey]) return prev;
+                        const next = { ...prev };
+                        delete next[globalKey];
+                        return next;
+                    });
+
+                    await db.ref(`arenaBattleState/${arenaKey}`).remove();
+                    await db.ref(`arenaGlobalState/${getArenaGlobalKey(arenaName)}`).remove();
+                    alert(`Se reseteó "${arenaName}" (${getBattleScopeLabel(scopeId)}) y se limpió su estado de batallas.`);
                 } catch (error) {
                     console.error('No se pudo resetear el item:', error);
                     alert('No se pudo resetear ese item.');
@@ -2876,13 +3017,15 @@ const saveProfile = (e) => {
             const resetSpecificBattle = async (arenaName, profileAId, profileBId, scopeId = selectedBattleScope, groupKey = selectedBattleGroupKey) => {
                 const arenaKey = getArenaBattleKey(arenaName, scopeId, groupKey);
                 const arenaState = arenaBattleState?.[arenaKey];
+                const globalKey = getArenaGlobalKey(arenaName);
+                const currentGlobalState = normalizeArenaGlobalState(arenaName, arenaGlobalState?.[globalKey] || {});
                 if (!arenaState) {
                     alert('Esa arena no tiene estado cargado.');
                     return;
                 }
 
-                const currentMatchups = arenaState.matchups || {};
-                const currentDirectMatchups = arenaState.directMatchups || {};
+                const currentMatchups = currentGlobalState?.matchups || {};
+                const currentDirectMatchups = currentGlobalState?.directMatchups || {};
                 const playedKeys = Object.keys(currentMatchups).filter((key) => !!currentMatchups[key]);
                 if (!playedKeys.length) {
                     alert('No hay cruces jugados para resetear en esta arena.');
@@ -2906,15 +3049,23 @@ const saveProfile = (e) => {
                     const updatedDirectMatchups = { ...currentDirectMatchups };
                     delete updatedDirectMatchups[pairKey];
 
-                    const rebuiltDerivedState = buildArenaDerivedState(updatedDirectMatchups, arenaState.orderedIds || []);
-                    const candidateState = {
-                        ...arenaState,
+                    const rebuiltDerivedState = buildArenaDerivedState(updatedDirectMatchups, getArenaOrderedProfileIds(perfiles));
+                    const nextGlobalState = {
+                        arenaName: globalKey,
+                        orderedIds: getArenaOrderedProfileIds(perfiles),
                         directMatchups: rebuiltDerivedState.directMatchups,
                         matchups: rebuiltDerivedState.matchups,
                         victoryGraph: rebuiltDerivedState.victoryGraph,
                         stats: rebuiltDerivedState.stats
                     };
-                    const normalizedState = normalizeArenaState(candidateState);
+                    const candidateState = {
+                        ...arenaState,
+                        directMatchups: nextGlobalState.directMatchups,
+                        matchups: nextGlobalState.matchups,
+                        victoryGraph: nextGlobalState.victoryGraph,
+                        stats: nextGlobalState.stats
+                    };
+                    const normalizedState = normalizeArenaState(arenaName, candidateState, nextGlobalState);
 
                     if (!normalizedState) {
                         alert('No se pudo recomponer el estado del arena.');
@@ -2925,8 +3076,15 @@ const saveProfile = (e) => {
                         ...prev,
                         [arenaKey]: normalizedState
                     }));
+                    setArenaGlobalState((prev) => ({
+                        ...prev,
+                        [globalKey]: nextGlobalState
+                    }));
 
-                    await db.ref(`arenaBattleState/${arenaKey}`).set(normalizedState);
+                    await Promise.all([
+                        db.ref(`arenaGlobalState/${globalKey}`).set(nextGlobalState),
+                        db.ref(`arenaBattleState/${arenaKey}`).set(normalizedState)
+                    ]);
 
                     const nextArenaBattleState = {
                         ...(arenaBattleState || {}),
@@ -3038,9 +3196,10 @@ const saveProfile = (e) => {
                 const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
                 const winIds = new Set();
                 const lossIds = new Set();
+                const arenaEntries = Object.entries(arenaBattleState || {});
 
                 arenaNames.forEach((arenaName) => {
-                    const arenaMatchups = arenaBattleState?.[arenaName]?.matchups || {};
+                    const arenaMatchups = arenaGlobalState?.[getArenaGlobalKey(arenaName)]?.matchups || {};
                     Object.values(arenaMatchups).forEach((match) => {
                         if (!match || typeof match !== 'object') return;
                         if (match.winnerId === profileId && match.loserId) {
@@ -4014,20 +4173,20 @@ const saveProfile = (e) => {
                 <div className="flex flex-wrap items-center gap-3">
                     <button
                         onClick={() => setActiveTab('EXPLORAR')}
-                        className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                        className="group metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
                     >
                         <i data-lucide="chevron-left" className="w-4 h-4"></i>
                         Volver a Explorar
                     </button>
                     <button
                         onClick={resetAllScores}
-                        className="bg-red-600/20 text-red-300 border border-red-400/40 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] hover:bg-red-600 hover:text-white transition-all"
+                        className="metal-btn-3d bg-red-600/20 text-red-300 border border-red-400/40 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] hover:bg-red-600 hover:text-white transition-all"
                     >
                         Resetear calificaciones
                     </button>
                     <button
                         onClick={() => setShowResetArenaPicker(prev => !prev)}
-                        className="bg-amber-500/20 text-amber-200 border border-amber-300/40 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] hover:bg-amber-500 hover:text-slate-950 transition-all"
+                        className="metal-btn-3d bg-amber-500/20 text-amber-200 border border-amber-300/40 px-6 py-3 rounded-2xl text-[11px] font-black uppercase tracking-[0.18em] hover:bg-amber-500 hover:text-slate-950 transition-all"
                     >
                         Resetear item
                     </button>
@@ -4045,7 +4204,7 @@ const saveProfile = (e) => {
                         </select>
                         <button
                             onClick={() => resetArenaScores(resetArenaTarget, selectedBattleScope, selectedBattleGroupKey)}
-                            className="bg-red-500/20 text-red-300 border border-red-400/40 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] hover:bg-red-500 hover:text-white transition-all"
+                            className="metal-btn-3d bg-red-500/20 text-red-300 border border-red-400/40 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] hover:bg-red-500 hover:text-white transition-all"
                             disabled={!selectedBattleScope}
                         >
                             Confirmar reset item
@@ -4074,7 +4233,7 @@ const saveProfile = (e) => {
                                 setSelectedBattleGroupKey(scope.id === 'GENERAL' ? 'all' : '');
                                 setSelectedArena(null);
                             }}
-                            className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
+                            className="theme-surface-card metal-card-3d border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
                         >
                             <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Modo</p>
                             <h3 className="text-2xl font-black italic text-white mt-2">{scope.label}</h3>
@@ -4096,7 +4255,7 @@ const saveProfile = (e) => {
                                 setSelectedBattleGroupKey('');
                                 setSelectedArena(null);
                             }}
-                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border theme-border-secondary text-[10px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] transition-all"
+                            className="metal-btn-3d inline-flex items-center gap-2 px-3 py-2 rounded-xl border theme-border-secondary text-[10px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] transition-all"
                         >
                             Cambiar modo
                         </button>
@@ -4114,7 +4273,7 @@ const saveProfile = (e) => {
                                             setSelectedBattleGroupKey(option.key);
                                             setSelectedArena(null);
                                         }}
-                                        className={`px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
+                                        className={`metal-btn-3d px-3 py-2 rounded-xl border text-[10px] font-black uppercase tracking-[0.14em] transition-all ${
                                             selectedBattleGroupKey === option.key
                                                 ? 'border-[var(--metal-gold)] text-[var(--metal-gold)] bg-[var(--metal-bronze)]/20'
                                                 : 'theme-border-secondary text-slate-200 hover:border-[var(--metal-gold)]'
@@ -4139,7 +4298,7 @@ const saveProfile = (e) => {
                             const arenaKey = getArenaBattleKey(arenaName, selectedBattleScope, selectedBattleGroupKey);
                             if (!arenaBattleState[arenaKey]) initArenaBattle(arenaName, selectedBattleScope, selectedBattleGroupKey);
                         }}
-                        className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all disabled:opacity-45 disabled:cursor-not-allowed"
+                        className="theme-surface-card metal-card-3d border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all disabled:opacity-45 disabled:cursor-not-allowed"
                     >
                         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Item</p>
                         <h3 className="text-2xl font-black italic text-white mt-2">{arenaName}</h3>
@@ -4165,7 +4324,7 @@ const saveProfile = (e) => {
                     <div className="flex flex-wrap items-center gap-3">
                         <button
                             onClick={() => setSelectedArena(null)}
-                            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                            className="group metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
                         >
                             <i data-lucide="arrow-left" className="w-4 h-4"></i>
                             Volver a arenas
@@ -4176,21 +4335,21 @@ const saveProfile = (e) => {
                                 setSelectedBattleScope(null);
                                 setSelectedBattleGroupKey('');
                             }}
-                            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                            className="group metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
                         >
                             <i data-lucide="refresh-ccw" className="w-4 h-4"></i>
                             Cambiar modo
                         </button>
                         <button
                             onClick={() => setActiveTab('EXPLORAR')}
-                            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                            className="group metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
                         >
                             <i data-lucide="layout-grid" className="w-4 h-4"></i>
                             Ir a Explorar
                         </button>
                         <button
                             onClick={() => setShowBattleResetPanel(prev => !prev)}
-                            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-400/40 text-[11px] font-black uppercase tracking-[0.16em] text-red-300 hover:bg-red-600 hover:text-white transition-all"
+                            className="metal-btn-3d inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-red-400/40 text-[11px] font-black uppercase tracking-[0.16em] text-red-300 hover:bg-red-600 hover:text-white transition-all"
                         >
                             Resetear una batalla
                         </button>
@@ -4217,7 +4376,7 @@ const saveProfile = (e) => {
                                                 <button
                                                     key={pairKey}
                                                     onClick={() => resetSpecificBattle(selectedArena, profileAId, profileBId, selectedBattleScope, selectedBattleGroupKey)}
-                                                    className="w-full text-left px-3 py-2 rounded-xl border theme-border-secondary bg-slate-900/60 hover:border-red-300/70 transition-all"
+                                                    className="metal-btn-3d w-full text-left px-3 py-2 rounded-xl border theme-border-secondary bg-slate-900/60 hover:border-red-300/70 transition-all"
                                                 >
                                                     <span className="text-xs text-white font-semibold">{labelA} vs {labelB}</span>
                                                 </button>
@@ -4248,7 +4407,7 @@ const saveProfile = (e) => {
                         <p className="text-sm text-slate-300">Presioná para iniciar esta arena.</p>
                         <button
                             onClick={() => initArenaBattle(selectedArena, selectedBattleScope, selectedBattleGroupKey)}
-                            className="mt-4 bg-[var(--metal-bronze)] text-white px-5 py-3 rounded-xl font-black uppercase text-xs tracking-[0.2em]"
+                            className="metal-btn-3d mt-4 bg-[var(--metal-bronze)] text-white px-5 py-3 rounded-xl font-black uppercase text-xs tracking-[0.2em]"
                         >
                             Iniciar batallas
                         </button>
@@ -4266,7 +4425,7 @@ const saveProfile = (e) => {
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
                         <button
                             onClick={() => registerBattleWinner(selectedArena, champion.firebaseId, selectedBattleScope, selectedBattleGroupKey)}
-                            className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
+                            className="theme-surface-card metal-card-3d battle-participant-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
                         >
                             <img
                                 src={getBattlePhotoForArena(champion, selectedArena)}
@@ -4294,7 +4453,7 @@ const saveProfile = (e) => {
 
                         <button
                             onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId, selectedBattleScope, selectedBattleGroupKey)}
-                            className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
+                            className="theme-surface-card metal-card-3d battle-participant-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
                         >
                             <img
                                 src={getBattlePhotoForArena(challenger, selectedArena)}
