@@ -1402,7 +1402,6 @@
             const [isScenePlaying, setIsScenePlaying] = useState(false);
             const [isSceneRandom, setIsSceneRandom] = useState(false);
             const [galleryPlaybackSeconds, setGalleryPlaybackSeconds] = useState(5);
-            const [globalMedia, setGlobalMedia] = useState([]);
             const [isSidebarOpen, setIsSidebarOpen] = useState(true);
             const [isEditingGalleryLabel, setIsEditingGalleryLabel] = useState(false);
             const [galleryLabelDraft, setGalleryLabelDraft] = useState('');
