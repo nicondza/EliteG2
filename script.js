@@ -3009,17 +3009,26 @@ const saveProfile = (e) => {
                 const arenaNames = SCORE_GROUP_TO_ARENAS[categoryKey] || [];
                 const winIds = new Set();
                 const lossIds = new Set();
+                const arenaEntries = Object.entries(arenaBattleState || {});
 
                 arenaNames.forEach((arenaName) => {
-                    const arenaMatchups = arenaBattleState?.[arenaName]?.matchups || {};
-                    Object.values(arenaMatchups).forEach((match) => {
-                        if (!match || typeof match !== 'object') return;
-                        if (match.winnerId === profileId && match.loserId) {
-                            winIds.add(match.loserId);
-                        }
-                        if (match.loserId === profileId && match.winnerId) {
-                            lossIds.add(match.winnerId);
-                        }
+                    const arenaSuffix = `::${String(arenaName || '').trim()}`;
+                    const matchingArenaStates = arenaEntries
+                        .filter(([arenaKey]) => arenaKey === arenaName || arenaKey.endsWith(arenaSuffix))
+                        .map(([, state]) => state)
+                        .filter(Boolean);
+
+                    matchingArenaStates.forEach((state) => {
+                        const arenaMatchups = state?.matchups || {};
+                        Object.values(arenaMatchups).forEach((match) => {
+                            if (!match || typeof match !== 'object') return;
+                            if (match.winnerId === profileId && match.loserId) {
+                                winIds.add(match.loserId);
+                            }
+                            if (match.loserId === profileId && match.winnerId) {
+                                lossIds.add(match.winnerId);
+                            }
+                        });
                     });
                 });
 
