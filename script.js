@@ -1283,10 +1283,13 @@ const getInitialCatFormData = () => ({
                 const withStatus = rows.map((row) => {
                     const normalizedValue = typeof row.value === 'string' ? row.value.trim() : row.value;
                     const isComplete = !(normalizedValue === '' || normalizedValue === undefined || normalizedValue === null);
+                    const previewValue = row.key === 'fotos.0'
+                        ? (isComplete ? 'SI' : 'NO')
+                        : (isComplete ? String(normalizedValue) : 'Sin completar');
                     return {
                         ...row,
                         isComplete,
-                        preview: isComplete ? String(normalizedValue) : 'Sin completar'
+                        preview: previewValue
                     };
                 });
 
