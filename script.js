@@ -1108,6 +1108,10 @@
             const [isModalOpen, setIsModalOpen] = useState(false);
             const [isCatModalOpen, setIsCatModalOpen] = useState(false);
             const [editingId, setEditingId] = useState(null);
+            const [contextMenuProfileId, setContextMenuProfileId] = useState(null);
+            const [contextProfile, setContextProfile] = useState(null);
+            const [isDeleteProfileModalOpen, setIsDeleteProfileModalOpen] = useState(false);
+            const [profileActionError, setProfileActionError] = useState('');
             const [selectedCategory, setSelectedCategory] = React.useState(null);
             const [sortBy, setSortBy] = useState('promedio');
             const [sortDirection, setSortDirection] = useState('desc');
@@ -2086,21 +2090,53 @@ const saveProfile = (e) => {
                 }
             };
 
-            const deleteProfile = async () => {
-                if (!editingId) return;
+            const openProfileEditor = (profile) => {
+                if (!profile) return;
+                if (typeof setFormData === 'function') setFormData(mapProfileToFormData(profile));
+                if (typeof setEditingId === 'function') setEditingId(profile.firebaseId);
+                if (typeof setIsModalOpen === 'function') setIsModalOpen(true);
+            };
 
-                const confirmed = confirm('¿Borrar perfil? Esta acción también lo elimina de Firebase.');
-                if (!confirmed) return;
+            const requestDeleteProfile = (profile) => {
+                if (!profile?.firebaseId) return;
+                setProfileActionError('');
+                setContextProfile(profile);
+                setIsDeleteProfileModalOpen(true);
+            };
+
+            const closeDeleteProfileModal = () => {
+                setIsDeleteProfileModalOpen(false);
+                setContextMenuProfileId(null);
+                setContextProfile(null);
+            };
+
+            const deleteProfileById = async (profileId) => {
+                if (!profileId) return;
+                await db.ref(`perfiles/${profileId}`).remove();
+                setPerfiles(prev => prev.filter(p => p.firebaseId !== profileId));
+            };
+
+            const confirmDeleteFromContext = async () => {
+                if (!contextProfile?.firebaseId) return;
 
                 try {
-                    await db.ref(`perfiles/${editingId}`).remove();
-                    setPerfiles(prev => prev.filter(p => p.firebaseId !== editingId));
+                    await deleteProfileById(contextProfile.firebaseId);
+                    setProfileActionError('');
                     setIsModalOpen(false);
-                    setEditingId(null);
+                    if (editingId === contextProfile.firebaseId) {
+                        setEditingId(null);
+                    }
+                    closeDeleteProfileModal();
                 } catch (error) {
                     console.error("No se pudo borrar el perfil:", error);
-                    alert("No se pudo borrar el perfil. Probá de nuevo.");
+                    setProfileActionError('No se pudo borrar el perfil en Firebase. Probá de nuevo.');
                 }
+            };
+
+            const deleteProfile = async () => {
+                if (!editingId) return;
+                const profile = perfiles.find((p) => p.firebaseId === editingId);
+                requestDeleteProfile(profile || { firebaseId: editingId, nombre: formData?.nombre || 'este perfil' });
             };
             const getArenaStats = (arenaName, profileId) => {
                 const stats = arenaBattleState[arenaName]?.stats?.[profileId] || { wins: 0, battles: 0 };
@@ -2860,9 +2896,8 @@ const saveProfile = (e) => {
                         <div
                             key={p.firebaseId || Math.random()}
                             onClick={() => {
-                                if (typeof setFormData === 'function') setFormData(mapProfileToFormData(p));
-                                if (typeof setEditingId === 'function') setEditingId(p.firebaseId);
-                                if (typeof setIsModalOpen === 'function') setIsModalOpen(true);
+                                setContextMenuProfileId(null);
+                                openProfileEditor(p);
                             }}
                             className="profile-card group relative rounded-2xl overflow-hidden cursor-pointer"
                             style={{
@@ -2876,6 +2911,47 @@ const saveProfile = (e) => {
                                     className="w-full h-full object-cover transition-transform duration-700 opacity-80 group-hover:opacity-100"
                                     onError={applyCryingEmojiFallback}
                                 />
+
+                                <div className="absolute top-6 left-6 z-20">
+                                    <button
+                                        type="button"
+                                        onClick={(event) => {
+                                            event.stopPropagation();
+                                            setProfileActionError('');
+                                            setContextProfile(p);
+                                            setContextMenuProfileId((prev) => prev === p.firebaseId ? null : p.firebaseId);
+                                        }}
+                                        className="w-10 h-10 rounded-full bg-slate-900/90 backdrop-blur-md border border-white/15 text-slate-200 hover:text-white hover:border-[var(--metal-gold)] transition-all flex items-center justify-center"
+                                        aria-label="Abrir menú contextual del perfil"
+                                    >
+                                        <LucideIcon name="more-vertical" size={16} />
+                                    </button>
+
+                                    {contextMenuProfileId === p.firebaseId && (
+                                        <div className="absolute top-12 left-0 min-w-[170px] rounded-xl border theme-border-secondary bg-slate-950/95 shadow-2xl p-2 space-y-1" onClick={(event) => event.stopPropagation()}>
+                                            <button
+                                                type="button"
+                                                className="w-full text-left px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-[0.12em] text-slate-200 hover:bg-slate-800 transition-all"
+                                                onClick={() => {
+                                                    setContextMenuProfileId(null);
+                                                    openProfileEditor(p);
+                                                }}
+                                            >
+                                                Editar
+                                            </button>
+                                            <button
+                                                type="button"
+                                                className="w-full text-left px-3 py-2 rounded-lg text-[10px] font-black uppercase tracking-[0.12em] text-red-300 hover:bg-red-500/20 transition-all"
+                                                onClick={() => {
+                                                    requestDeleteProfile(p);
+                                                    setContextMenuProfileId(null);
+                                                }}
+                                            >
+                                                Eliminar
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
 
                                 <div className="absolute top-6 right-6 w-14 h-14 bg-slate-900/90 backdrop-blur-md rounded-full flex flex-col items-center justify-center border border-white/10">
                                     <span className="text-[9px] font-black text-[var(--metal-gold)] leading-none">G2</span>
@@ -4121,6 +4197,41 @@ const saveProfile = (e) => {
                                         </button>
                                     </div>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {isDeleteProfileModalOpen && (
+                        <div className="fixed inset-0 z-[120] bg-slate-950/85 backdrop-blur-sm flex items-center justify-center p-6" onClick={closeDeleteProfileModal}>
+                            <div className="w-full max-w-xl theme-surface-card border theme-border-secondary rounded-3xl p-8 space-y-6" onClick={(event) => event.stopPropagation()}>
+                                <div className="space-y-3">
+                                    <p className="text-xs font-black uppercase tracking-[0.24em] text-red-300">Acción destructiva</p>
+                                    <h3 className="text-2xl font-black italic text-white tracking-tight">¿Eliminar perfil?</h3>
+                                    <p className="text-sm text-slate-300">
+                                        Esta acción eliminará de forma permanente a <span className="font-black text-white">{contextProfile?.nombre || 'este perfil'}</span> y sus datos en Firebase. No se puede deshacer.
+                                    </p>
+                                    {profileActionError && (
+                                        <div className="rounded-xl border border-red-400/40 bg-red-500/10 px-4 py-3 text-xs font-semibold text-red-200">
+                                            {profileActionError}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="flex justify-end gap-3">
+                                    <button
+                                        type="button"
+                                        onClick={closeDeleteProfileModal}
+                                        className="btn-metal btn-metal--silver px-6 py-3 rounded-xl text-[10px]"
+                                    >
+                                        Cancelar
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={confirmDeleteFromContext}
+                                        className="btn-metal btn-metal--danger px-6 py-3 rounded-xl text-[10px]"
+                                    >
+                                        Eliminar
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}
