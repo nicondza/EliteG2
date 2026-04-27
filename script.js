@@ -1177,6 +1177,7 @@
             const [brokenGalleryMap, setBrokenGalleryMap] = useState({});
             const [brokenGalleryUrlDrafts, setBrokenGalleryUrlDrafts] = useState({});
             const [brokenGallerySavingMap, setBrokenGallerySavingMap] = useState({});
+            const [brokenGalleryEditingMap, setBrokenGalleryEditingMap] = useState({});
             const galleryPlaybackTimeoutRef = useRef(null);
 
             const [filters, setFilters] = useState({
@@ -2047,6 +2048,7 @@ const getInitialCatFormData = () => ({
                     return acc;
                 }, {});
                 setBrokenGalleryUrlDrafts(nextDrafts);
+                setBrokenGalleryEditingMap({});
             }, [isBrokenGalleryModalOpen, brokenGalleryPhotos]);
 
             useEffect(() => {
@@ -2115,21 +2117,35 @@ const getInitialCatFormData = () => ({
             const handleBrokenDraftChange = (photoId, nextUrl) => {
                 setBrokenGalleryUrlDrafts((current) => ({ ...current, [photoId]: nextUrl }));
             };
+            const setBrokenPhotoEditing = (photoId, isEditing) => {
+                if (!photoId) return;
+                setBrokenGalleryEditingMap((current) => ({ ...current, [photoId]: Boolean(isEditing) }));
+            };
+            const openBrokenGalleryPhotoUrl = (photo) => {
+                const targetUrl = (brokenGalleryUrlDrafts[photo?.id] || photo?.url || '').trim();
+                if (!targetUrl) return;
+                window.open(targetUrl, '_blank', 'noopener,noreferrer');
+            };
             const saveBrokenGalleryPhotoUrl = async (photo) => {
                 if (!photo) return;
                 const nextUrl = (brokenGalleryUrlDrafts[photo.id] || '').trim();
-                if (!nextUrl || nextUrl === photo.url) return;
+                if (!nextUrl) return;
 
                 setBrokenGallerySavingMap((current) => ({ ...current, [photo.id]: true }));
                 try {
-                    await updateGalleryItemUrl({
-                        profileId: photo.profileId,
-                        sourceTag: photo.sourceTag,
-                        sourceIndex: photo.sourceIndex,
-                        url: nextUrl
-                    });
+                    if (nextUrl !== photo.url) {
+                        await updateGalleryItemUrl({
+                            profileId: photo.profileId,
+                            sourceTag: photo.sourceTag,
+                            sourceIndex: photo.sourceIndex,
+                            url: nextUrl
+                        });
+                    }
                     const isBroken = await checkImageUrlIsBroken(nextUrl);
                     setBrokenGalleryMap((current) => ({ ...current, [photo.id]: isBroken }));
+                    if (!isBroken) {
+                        setBrokenPhotoEditing(photo.id, false);
+                    }
                 } catch (error) {
                     console.error('Error al actualizar URL rota:', error);
                 } finally {
@@ -3854,8 +3870,8 @@ const saveProfile = (e) => {
             )}
 
             {isBrokenGalleryModalOpen && (
-                <div className="fixed inset-0 z-[130] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={() => setIsBrokenGalleryModalOpen(false)}>
-                    <div className="w-full max-w-6xl max-h-full theme-surface-card border theme-border-secondary rounded-[2rem] p-5 sm:p-6 overflow-hidden" onClick={(event) => event.stopPropagation()}>
+                <div className="fixed inset-0 z-[130] bg-slate-950/90 backdrop-blur-xl flex items-center justify-center p-3 sm:p-6" onClick={() => setIsBrokenGalleryModalOpen(false)}>
+                    <div className="w-full max-w-[min(1200px,100%)] max-h-full theme-surface-card border theme-border-secondary rounded-[2rem] p-4 sm:p-6 overflow-hidden" onClick={(event) => event.stopPropagation()}>
                         <div className="flex items-center justify-between gap-4 mb-5">
                             <div>
                                 <p className="text-2xl font-black italic text-white tracking-tighter">Fotos rotas</p>
@@ -3890,13 +3906,14 @@ const saveProfile = (e) => {
                                     <div className="space-y-3">
                                         {group.fotos.map((photo) => {
                                             const isSaving = !!brokenGallerySavingMap[photo.id];
+                                            const isEditing = !!brokenGalleryEditingMap[photo.id];
                                             const draftUrl = brokenGalleryUrlDrafts[photo.id] ?? photo.url;
                                             return (
-                                                <article key={photo.id} className="grid grid-cols-1 lg:grid-cols-[90px_1fr_auto] gap-3 p-3 rounded-xl border theme-border-secondary bg-slate-950/40">
-                                                    <div className="w-[90px] h-[90px] rounded-lg overflow-hidden border theme-border-secondary bg-slate-900 flex items-center justify-center">
+                                                <article key={photo.id} className="grid grid-cols-1 xl:grid-cols-[76px_minmax(0,1fr)_auto] gap-3 p-3 rounded-xl border theme-border-secondary bg-slate-950/40">
+                                                    <div className="w-[76px] h-[76px] rounded-lg overflow-hidden border theme-border-secondary bg-slate-900 flex items-center justify-center">
                                                         <img src={CRYING_EMOJI_FALLBACK} alt="Vista previa rota" className="w-full h-full object-cover" />
                                                     </div>
-                                                    <div className="space-y-2">
+                                                    <div className="space-y-2 min-w-0">
                                                         <div className="flex flex-wrap items-center gap-2">
                                                             <span className="text-[10px] px-2 py-1 rounded-full border theme-border-secondary bg-slate-900/85 font-black uppercase tracking-[0.16em] text-slate-200">
                                                                 Etiqueta: {photo.label || 'Sin etiqueta'}
@@ -3910,17 +3927,33 @@ const saveProfile = (e) => {
                                                             value={draftUrl}
                                                             onChange={(event) => handleBrokenDraftChange(photo.id, event.target.value)}
                                                             placeholder="https://..."
-                                                            className="w-full bg-slate-900 border theme-border-secondary rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[var(--metal-gold)]"
+                                                            readOnly={!isEditing}
+                                                            className={`w-full min-w-0 bg-slate-900 border theme-border-secondary rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[var(--metal-gold)] ${!isEditing ? 'opacity-80 cursor-default' : ''}`}
                                                         />
                                                     </div>
-                                                    <div className="flex lg:flex-col gap-2 lg:justify-center">
+                                                    <div className="flex flex-wrap xl:flex-col gap-2 xl:justify-center">
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => openBrokenGalleryPhotoUrl(photo)}
+                                                            className="btn-metal btn-metal--silver px-3 py-2 rounded-xl text-[10px]"
+                                                        >
+                                                            Ir al enlace
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setBrokenPhotoEditing(photo.id, true)}
+                                                            disabled={isSaving}
+                                                            className="btn-metal px-3 py-2 rounded-xl text-[10px] disabled:opacity-60"
+                                                        >
+                                                            Editar enlace
+                                                        </button>
                                                         <button
                                                             type="button"
                                                             onClick={() => saveBrokenGalleryPhotoUrl(photo)}
                                                             disabled={isSaving}
                                                             className="btn-metal btn-metal--gold px-3 py-2 rounded-xl text-[10px] disabled:opacity-60"
                                                         >
-                                                            Guardar URL
+                                                            Guardar enlace
                                                         </button>
                                                         <button
                                                             type="button"
