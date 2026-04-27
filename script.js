@@ -3711,7 +3711,6 @@ const saveProfile = (e) => {
                                 { id: 'EXPLORAR', icon: 'layout-grid', label: 'Explorar' },
                                 { id: 'PERSONAJE', icon: 'user-round-search', label: 'Personaje' },
                                 { id: 'RANKING', icon: 'trending-up', label: 'Ranking' },
-                                { id: 'PERSONAJE', icon: 'user', label: 'Personaje' },
                                 { id: 'BATALLAS', icon: 'swords', label: 'Batallas' },
                                 { id: 'CATEGORIAS', icon: 'folder-heart', label: 'Categorías' },
                                 { id: 'GALERIA', icon: 'images', label: 'Galería' },
@@ -3868,15 +3867,131 @@ const saveProfile = (e) => {
                     )}
 
                     {activeTab === 'PERSONAJE' && !selectedCategory && (
-                        <div className="theme-surface-card gothic-frame gothic-frame--ornate rounded-[2rem] p-8 md:p-10 animate-in fade-in duration-500">
-                            <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Personaje</h2>
-                            <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-2">
-                                Espacio listo para construir la vista de personaje con el estilo actual.
-                            </p>
-                            <div className="mt-8">
-                                <button type="button" className="btn-metal btn-metal--gold px-6 py-3 rounded-2xl text-xs">
-                                    Próximamente
-                                </button>
+                        <div className="space-y-8 animate-in fade-in duration-500">
+                            <div>
+                                <h2 className="neon-sign neon-sign--cyan text-4xl font-black italic text-white uppercase tracking-tighter">Personaje</h2>
+                                <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">
+                                    Buscador y ficha rápida de cada perfil
+                                </p>
+                            </div>
+                            <div className="grid grid-cols-1 xl:grid-cols-[340px_minmax(0,1fr)] gap-8">
+                                <section className="theme-surface-card gothic-frame gothic-frame--secondary rounded-2xl p-5 space-y-4 h-fit">
+                                    <label htmlFor="characterSearchInput" className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-300">Buscar personaje</label>
+                                    <div className="relative">
+                                        <LucideIcon name="search" size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                                        <input
+                                            id="characterSearchInput"
+                                            type="text"
+                                            value={characterSearchTerm}
+                                            onChange={(event) => setCharacterSearchTerm(event.target.value)}
+                                            placeholder="Nombre del personaje..."
+                                            className="w-full bg-slate-950/80 border border-slate-700 rounded-xl py-2.5 pl-9 pr-3 text-sm text-slate-100 placeholder:text-slate-500 outline-none focus:border-cyan-400"
+                                        />
+                                    </div>
+                                    <div className="max-h-[520px] overflow-y-auto space-y-2 pr-1">
+                                        {filteredCharacterProfiles.length ? filteredCharacterProfiles.map((profile) => {
+                                            const isActive = selectedCharacterId === profile.firebaseId;
+                                            return (
+                                                <button
+                                                    key={profile.firebaseId}
+                                                    type="button"
+                                                    onClick={() => setSelectedCharacterId(profile.firebaseId)}
+                                                    className={`w-full text-left rounded-xl border px-3 py-3 transition-all ${isActive ? 'border-cyan-300 bg-cyan-500/12 shadow-[0_0_14px_rgba(34,211,238,0.2)]' : 'border-slate-700 bg-slate-900/55 hover:border-slate-500'}`}
+                                                >
+                                                    <p className="font-bold text-sm text-slate-100 truncate">{profile.nombre || 'Sin nombre'}</p>
+                                                    <p className="text-[10px] font-black uppercase tracking-[0.15em] text-[var(--metal-gold)] mt-1">{profile.profesion || 'Sin profesión'}</p>
+                                                </button>
+                                            );
+                                        }) : (
+                                            <p className="text-xs text-slate-400 py-3">No hay resultados para esa búsqueda.</p>
+                                        )}
+                                    </div>
+                                </section>
+
+                                <section className="theme-surface-card gothic-frame gothic-frame--ornate rounded-2xl p-6 md:p-8">
+                                    {selectedCharacterProfile ? (
+                                        <div className="space-y-7">
+                                            <div className="flex flex-col lg:flex-row gap-6">
+                                                <img
+                                                    src={getSafeImageSrc(selectedCharacterProfile.fotos?.[0], 'https://via.placeholder.com/400x500')}
+                                                    alt={selectedCharacterProfile.nombre || 'Perfil'}
+                                                    className="w-full lg:w-72 h-80 rounded-2xl object-cover border border-slate-700/70 bg-slate-950/70"
+                                                    onError={applyCryingEmojiFallback}
+                                                />
+                                                <div className="flex-1 space-y-4">
+                                                    <div>
+                                                        <h3 className="text-3xl font-black italic text-white tracking-tight">{selectedCharacterProfile.nombre || 'Sin nombre'}</h3>
+                                                        <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[var(--metal-gold)] mt-1">{selectedCharacterProfile.profesion || 'Sin profesión'}</p>
+                                                    </div>
+                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                                        <div className="theme-surface-soft rounded-xl border theme-border-secondary px-3 py-2">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Ranking</p>
+                                                            <p className="text-lg font-black text-white">{selectedCharacterRankingPosition ? `#${selectedCharacterRankingPosition}` : '—'}</p>
+                                                        </div>
+                                                        <div className="theme-surface-soft rounded-xl border theme-border-secondary px-3 py-2">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Edad</p>
+                                                            <p className="text-lg font-black text-white">{calcularEdad(selectedCharacterProfile.fechaNacimiento) || '—'}</p>
+                                                        </div>
+                                                        <div className="theme-surface-soft rounded-xl border theme-border-secondary px-3 py-2">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">Altura</p>
+                                                            <p className="text-lg font-black text-white">{getProfileHeightLabel(selectedCharacterProfile) || '—'}</p>
+                                                        </div>
+                                                        <div className="theme-surface-soft rounded-xl border theme-border-secondary px-3 py-2">
+                                                            <p className="text-[9px] font-black uppercase tracking-widest text-slate-500">G2 Score</p>
+                                                            <p className="text-lg font-black text-[var(--metal-gold)]">{calcularPromedio(selectedCharacterProfile)}</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                        <div className="rounded-xl border border-slate-700 bg-slate-950/55 px-3 py-3">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Rostro</p>
+                                                            <p className="text-xl font-black text-white">{getRostroScore(selectedCharacterProfile).toFixed(0)}</p>
+                                                        </div>
+                                                        <div className="rounded-xl border border-slate-700 bg-slate-950/55 px-3 py-3">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Cuerpo</p>
+                                                            <p className="text-xl font-black text-white">{getCuerpoScore(selectedCharacterProfile).toFixed(0)}</p>
+                                                        </div>
+                                                        <div className="rounded-xl border border-slate-700 bg-slate-950/55 px-3 py-3">
+                                                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Actitud</p>
+                                                            <p className="text-xl font-black text-white">{getActitudScore(selectedCharacterProfile).toFixed(0)}</p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => openProfileEditor(selectedCharacterProfile)}
+                                                        className="btn-metal btn-metal--gold px-5 py-3 rounded-2xl text-xs inline-flex items-center gap-2"
+                                                    >
+                                                        <LucideIcon name="square-pen" size={14} /> Editar personaje
+                                                    </button>
+                                                </div>
+                                            </div>
+                                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                                                {(() => {
+                                                    const matchups = getMatchupNamesForProfile(selectedCharacterProfile.firebaseId);
+                                                    return (
+                                                        <>
+                                                            <div className="theme-surface-soft rounded-2xl border theme-border-secondary p-4">
+                                                                <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-emerald-300">A quién le ganó</h4>
+                                                                <p className="text-xs text-slate-400 mt-2">
+                                                                    {matchups.wins.length ? matchups.wins.join(' · ') : 'Sin victorias registradas.'}
+                                                                </p>
+                                                            </div>
+                                                            <div className="theme-surface-soft rounded-2xl border theme-border-secondary p-4">
+                                                                <h4 className="text-[10px] font-black uppercase tracking-[0.18em] text-rose-300">Contra quién perdió</h4>
+                                                                <p className="text-xs text-slate-400 mt-2">
+                                                                    {matchups.losses.length ? matchups.losses.join(' · ') : 'Sin derrotas registradas.'}
+                                                                </p>
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="py-20 text-center">
+                                            <p className="text-sm text-slate-300">No hay personaje seleccionado.</p>
+                                        </div>
+                                    )}
+                                </section>
                             </div>
                         </div>
                     )}
