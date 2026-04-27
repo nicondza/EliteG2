@@ -362,6 +362,15 @@
             if (lowP.includes('atleta')) return '🏋️‍♀️';
             return '📖';
         };
+        const getProfessionCardVisual = (profession = '') => {
+            const normalizedProfession = String(profession || '').trim();
+            const config = PROFESIONES_CONFIG[normalizedProfession] || PROFESIONES_CONFIG.Otro;
+            const baseColor = String(config?.color || 'rgba(148, 163, 184, 0.8)')
+                .replace(/,\s*[\d.]+\)$/, ', 1)');
+            const glowColor = String(config?.color || 'rgba(148, 163, 184, 0.8)')
+                .replace(/,\s*[\d.]+\)$/, ', 0.75)');
+            return { baseColor, glowColor };
+        };
 
         const HeraldicGlyph = ({ variant = 'sigil', size = 18, className = '', tint = 'currentColor' }) => {
             const common = {
@@ -2960,18 +2969,30 @@ const saveProfile = (e) => {
                                         .filter(Boolean)
                                 )].map(prof => {
                                     const count = (perfiles || []).filter(p => String(p?.profesion || '').trim() === prof).length;
+                                    const visualStyle = getProfessionCardVisual(prof);
 
                                     return (
                                         <div
                                             key={prof}
                                             onClick={() => setSelectedCategory(prof)}
-                                            className="theme-surface-card rounded-2xl border theme-border-secondary p-8 text-center cursor-pointer hover:shadow-[0_0_30px_rgba(34,211,238,0.15)] hover:border-[color:color-mix(in_srgb,var(--metal-gold)_50%,transparent)] transition-all group relative overflow-hidden active:scale-95"
+                                            className="profession-folder-card rounded-2xl p-8 text-center cursor-pointer transition-all group relative overflow-hidden active:scale-95"
+                                            style={{
+                                                '--folder-color': visualStyle.baseColor,
+                                                '--folder-glow': visualStyle.glowColor
+                                            }}
                                         >
-                                            <div className="w-24 h-24 bg-slate-900 rounded-[2rem] flex items-center justify-center text-5xl mx-auto mb-6 shadow-2xl border theme-border-secondary group-hover:scale-110 group-hover:border-cyan-500 transition-all duration-500">
+                                            <div className="profession-folder-card__icon w-24 h-24 rounded-[2rem] flex items-center justify-center text-5xl mx-auto mb-6">
                                                 {getEmoji(prof)}
                                             </div>
                                             <h3 className="text-2xl font-black text-white mb-2 truncate uppercase tracking-tighter italic">{prof}</h3>
-                                            <div className="inline-flex items-center gap-2 bg-[var(--metal-bronze)]/10 px-5 py-2 rounded-full border border-cyan-500/20">
+                                            <div
+                                                className="inline-flex items-center gap-2 px-5 py-2 rounded-full border"
+                                                style={{
+                                                    borderColor: 'color-mix(in srgb, var(--folder-color) 65%, rgba(2,6,23,0.8) 35%)',
+                                                    background: 'color-mix(in srgb, var(--folder-color) 14%, rgba(2,6,23,0.68) 86%)',
+                                                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.16), 0 0 14px color-mix(in srgb, var(--folder-glow) 35%, transparent)'
+                                                }}
+                                            >
                                                 <span className="text-[10px] font-black uppercase text-[var(--metal-gold)] tracking-widest">{count} {count === 1 ? 'Perfil' : 'Perfiles'}</span>
                                             </div>
                                         </div>
