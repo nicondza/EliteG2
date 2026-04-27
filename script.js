@@ -993,6 +993,7 @@
                     const viewerNextButton = document.getElementById('viewerNext');
                     const viewerPlayToggleButton = document.getElementById('viewerPlayToggle');
                     const viewerRandomToggleButton = document.getElementById('viewerRandomToggle');
+                    const viewerStage = document.getElementById('viewerStage') || viewer;
                     let currentViewerIndex = 0;
                     let viewerAutoplay = false;
                     let viewerRandom = false;
@@ -1171,6 +1172,60 @@
                         if (event) event.stopPropagation();
                         setViewerRandomState(!viewerRandom);
                     }
+                    function handleViewerSwipeByDelta(deltaX, deltaY) {
+                        if (viewerSlides.length <= 1) return;
+                        if (Math.abs(deltaX) < viewerSwipeThreshold) return;
+                        if (Math.abs(deltaX) <= Math.abs(deltaY)) return;
+                        if (deltaX < 0) {
+                            showNextViewerPhoto();
+                            return;
+                        }
+                        showPreviousViewerPhoto();
+                    }
+                    function onViewerTouchStart(event) {
+                        if (!viewer.classList.contains('open')) return;
+                        const touch = event.touches && event.touches[0];
+                        if (!touch) return;
+                        viewerTouchStartX = touch.clientX;
+                        viewerTouchStartY = touch.clientY;
+                        viewerTouchCurrentX = touch.clientX;
+                        viewerTouchCurrentY = touch.clientY;
+                        viewerTouchTracking = true;
+                        viewerTouchHorizontalGesture = false;
+                    }
+                    function onViewerTouchMove(event) {
+                        if (!viewerTouchTracking) return;
+                        const touch = event.touches && event.touches[0];
+                        if (!touch) return;
+                        viewerTouchCurrentX = touch.clientX;
+                        viewerTouchCurrentY = touch.clientY;
+                        const deltaX = viewerTouchCurrentX - viewerTouchStartX;
+                        const deltaY = viewerTouchCurrentY - viewerTouchStartY;
+                        if (!viewerTouchHorizontalGesture && Math.abs(deltaX) >= viewerSwipeLockThreshold && Math.abs(deltaX) > Math.abs(deltaY)) {
+                            viewerTouchHorizontalGesture = true;
+                        }
+                        if (viewerTouchHorizontalGesture) {
+                            event.preventDefault();
+                        }
+                    }
+                    function onViewerTouchEnd() {
+                        if (!viewerTouchTracking) return;
+                        handleViewerSwipeByDelta(viewerTouchCurrentX - viewerTouchStartX, viewerTouchCurrentY - viewerTouchStartY);
+                        viewerTouchTracking = false;
+                        viewerTouchHorizontalGesture = false;
+                    }
+                    function onViewerPointerDown(event) {
+                        if (!viewer.classList.contains('open')) return;
+                        if (event.pointerType === 'mouse') return;
+                        viewerPointerStartX = event.clientX;
+                        viewerPointerStartY = event.clientY;
+                        viewerPointerTracking = true;
+                    }
+                    function onViewerPointerUp(event) {
+                        if (!viewerPointerTracking) return;
+                        viewerPointerTracking = false;
+                        handleViewerSwipeByDelta(event.clientX - viewerPointerStartX, event.clientY - viewerPointerStartY);
+                    }
                     if (galleryGrid) {
                         galleryGrid.addEventListener('click', function(event) {
                             const deleteButton = event.target.closest('.gallery-delete');
@@ -1197,6 +1252,19 @@
                             closeFullscreenViewer();
                         }
                     });
+                    if (viewerStage) {
+                        viewerStage.addEventListener('touchstart', onViewerTouchStart, { passive: true });
+                        viewerStage.addEventListener('touchmove', onViewerTouchMove, { passive: false });
+                        viewerStage.addEventListener('touchend', onViewerTouchEnd, { passive: true });
+                        viewerStage.addEventListener('touchcancel', onViewerTouchEnd, { passive: true });
+                        if (window.PointerEvent && !('ontouchstart' in window)) {
+                            viewerStage.addEventListener('pointerdown', onViewerPointerDown);
+                            viewerStage.addEventListener('pointerup', onViewerPointerUp);
+                            viewerStage.addEventListener('pointercancel', function() {
+                                viewerPointerTracking = false;
+                            });
+                        }
+                    }
                     window.addEventListener('keydown', function(event) {
                         if (!viewer.classList.contains('open')) return;
 
