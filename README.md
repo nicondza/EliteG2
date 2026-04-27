@@ -2,7 +2,7 @@
 
 ## Desarrollo
 
-Este proyecto ahora compila `script.js` (con JSX) a `dist/app.js` usando **esbuild**.
+Este proyecto usa `script.js` directamente en `index.html` y Tailwind compilado en `dist/tailwind.css`.
 
 ### Instalar dependencias
 
@@ -10,16 +10,10 @@ Este proyecto ahora compila `script.js` (con JSX) a `dist/app.js` usando **esbui
 npm install
 ```
 
-### Generar build
+### Generar CSS de Tailwind
 
 ```bash
-npm run build
+npm run build:tailwind
 ```
 
-### Modo watch
-
-```bash
-npm run build:watch
-```
-
-`index.html` carga el bundle compilado desde `dist/app.js` y ya no usa Babel en runtime.
+`index.html` carga `script.js` directamente y los estilos desde `dist/tailwind.css`.
