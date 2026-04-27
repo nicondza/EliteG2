@@ -2197,13 +2197,6 @@ const saveProfile = (e) => {
                 }
             };
 
-            const openProfileEditor = (profile) => {
-                if (!profile) return;
-                if (typeof setFormData === 'function') setFormData(mapProfileToFormData(profile));
-                if (typeof setEditingId === 'function') setEditingId(profile.firebaseId);
-                if (typeof setIsModalOpen === 'function') setIsModalOpen(true);
-            };
-
             const requestDeleteProfile = (profile) => {
                 if (!profile?.firebaseId) return;
                 setProfileActionError('');
