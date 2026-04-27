@@ -328,6 +328,7 @@
             { id: 'EDADES', label: 'Edades', description: 'Compará perfiles por rango etario.' },
             { id: 'GENERAL', label: 'General', description: 'Modo libre sin segmentación extra.' }
         ];
+        const ARENA_PARTICIPANT_MODES = BATTLE_SCOPES.map((scope) => scope.id);
         const getBattleScopeLabel = (scopeId = '') => {
             const scope = BATTLE_SCOPES.find((item) => item.id === scopeId);
             return scope?.label || 'General';
