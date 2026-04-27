@@ -322,6 +322,22 @@
             'Sensualidad', 'Carisma', 'Elegancia', 'Dulzura', 'Talento'
         ];
         const ARENAS = [...CARACTERISTICAS];
+        const BATTLE_SCOPES = [
+            { id: 'PROFESIONES', label: 'Profesiones', description: 'Compará perfiles por profesión.' },
+            { id: 'NACIONALIDADES', label: 'Nacionalidades', description: 'Compará perfiles por nacionalidad.' },
+            { id: 'EDADES', label: 'Edades', description: 'Compará perfiles por rango etario.' },
+            { id: 'GENERAL', label: 'General', description: 'Modo libre sin segmentación extra.' }
+        ];
+        const getBattleScopeLabel = (scopeId = '') => {
+            const scope = BATTLE_SCOPES.find((item) => item.id === scopeId);
+            return scope?.label || 'General';
+        };
+        const getArenaBattleKey = (arenaName, scopeId = 'GENERAL') => {
+            const safeArena = String(arenaName || '').trim();
+            const safeScope = String(scopeId || 'GENERAL').trim().toUpperCase();
+            if (!safeArena) return '';
+            return `${safeScope}::${safeArena}`;
+        };
         const createZeroScores = () => CARACTERISTICAS.reduce((acc, item) => {
             acc[item] = 0;
             return acc;
@@ -1111,6 +1127,7 @@
             const [categorias, setCategorias] = useState(INITIAL_CATEGORIES);
             const [activeTab, setActiveTab] = useState('EXPLORAR');
             const [selectedArena, setSelectedArena] = useState(null);
+            const [selectedBattleScope, setSelectedBattleScope] = useState(null);
             const [arenaBattleState, setArenaBattleState] = useState({});
             const [showResetArenaPicker, setShowResetArenaPicker] = useState(false);
             const [resetArenaTarget, setResetArenaTarget] = useState(ARENAS[0] || '');
@@ -2262,8 +2279,9 @@ const saveProfile = (e) => {
                     closeContextMenu();
                 }
             };
-            const getArenaStats = (arenaName, profileId) => {
-                const stats = arenaBattleState[arenaName]?.stats?.[profileId] || { wins: 0, battles: 0 };
+            const getArenaStats = (arenaName, profileId, scopeId = selectedBattleScope) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                const stats = arenaBattleState[arenaKey]?.stats?.[profileId] || { wins: 0, battles: 0 };
                 const score = stats.battles ? Math.round((stats.wins / stats.battles) * 100) : 0;
                 return { ...stats, score };
             };
@@ -2356,16 +2374,16 @@ const saveProfile = (e) => {
                 const repairedStates = {};
                 const updates = [];
 
-                Object.entries(arenaBattleState || {}).forEach(([arenaName, state]) => {
+                Object.entries(arenaBattleState || {}).forEach(([arenaKey, state]) => {
                     const normalized = normalizeArenaState(state);
                     if (!normalized) return;
 
                     const hasChanged = JSON.stringify(state) !== JSON.stringify(normalized);
                     if (!hasChanged) return;
 
-                    repairedStates[arenaName] = normalized;
+                    repairedStates[arenaKey] = normalized;
                     updates.push(
-                        db.ref(`arenaBattleState/${arenaName}`).set(normalized)
+                        db.ref(`arenaBattleState/${arenaKey}`).set(normalized)
                             .catch(error => console.error('No se pudo normalizar el estado del arena:', error))
                     );
                 });
@@ -2380,7 +2398,7 @@ const saveProfile = (e) => {
                 Promise.all(updates).catch(() => {});
             }, [arenaBattleState, perfiles]);
 
-            const initArenaBattle = (arenaName) => {
+            const initArenaBattle = (arenaName, scopeId = selectedBattleScope) => {
                 const orderedProfiles = [...perfiles]
                     .filter(p => p?.firebaseId && (p?.nombre || '').trim())
                     .sort((a, b) => (a.nombre || '').localeCompare((b.nombre || ''), 'es', { sensitivity: 'base' }));
@@ -2412,13 +2430,15 @@ const saveProfile = (e) => {
                     challengerId: initialPair[1],
                     isFinished: false
                 };
+                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                if (!arenaKey) return;
 
                 setArenaBattleState(prev => ({
                     ...prev,
-                    [arenaName]: nextArenaState
+                    [arenaKey]: nextArenaState
                 }));
 
-                db.ref(`arenaBattleState/${arenaName}`).set(nextArenaState)
+                db.ref(`arenaBattleState/${arenaKey}`).set(nextArenaState)
                     .catch(error => console.error('No se pudo guardar el estado del arena:', error));
             };
 
@@ -2431,8 +2451,9 @@ const saveProfile = (e) => {
                 }
             };
 
-            const registerBattleWinner = (arenaName, winnerId) => {
-                const state = arenaBattleState[arenaName];
+            const registerBattleWinner = (arenaName, winnerId, scopeId = selectedBattleScope) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                const state = arenaBattleState[arenaKey];
                 if (!state || state.isFinished) return;
 
                 const { orderedIds = [], championId, challengerId, matchups = {}, stats = {} } = state;
@@ -2517,10 +2538,10 @@ const saveProfile = (e) => {
 
                 setArenaBattleState(prev => ({
                     ...prev,
-                    [arenaName]: nextArenaState
+                    [arenaKey]: nextArenaState
                 }));
 
-                db.ref(`arenaBattleState/${arenaName}`).set(nextArenaState)
+                db.ref(`arenaBattleState/${arenaKey}`).set(nextArenaState)
                     .catch(error => console.error('No se pudo guardar avance de batallas:', error));
             };
 
@@ -2547,7 +2568,7 @@ const saveProfile = (e) => {
                 }
             };
 
-            const resetArenaScores = async (arenaName) => {
+            const resetArenaScores = async (arenaName, scopeId = selectedBattleScope) => {
                 if (!arenaName) {
                     alert('Seleccioná un item para resetear.');
                     return;
@@ -2570,23 +2591,25 @@ const saveProfile = (e) => {
                         }
                     })));
 
+                    const arenaKey = getArenaBattleKey(arenaName, scopeId);
                     setArenaBattleState((prev) => {
-                        if (!prev?.[arenaName]) return prev;
+                        if (!prev?.[arenaKey]) return prev;
                         const next = { ...prev };
-                        delete next[arenaName];
+                        delete next[arenaKey];
                         return next;
                     });
 
-                    await db.ref(`arenaBattleState/${arenaName}`).remove();
-                    alert(`Se reseteó "${arenaName}" y se limpió su estado de batallas.`);
+                    await db.ref(`arenaBattleState/${arenaKey}`).remove();
+                    alert(`Se reseteó "${arenaName}" (${getBattleScopeLabel(scopeId)}) y se limpió su estado de batallas.`);
                 } catch (error) {
                     console.error('No se pudo resetear el item:', error);
                     alert('No se pudo resetear ese item.');
                 }
             };
 
-            const resetSpecificBattle = async (arenaName, profileAId, profileBId) => {
-                const arenaState = arenaBattleState?.[arenaName];
+            const resetSpecificBattle = async (arenaName, profileAId, profileBId, scopeId = selectedBattleScope) => {
+                const arenaKey = getArenaBattleKey(arenaName, scopeId);
+                const arenaState = arenaBattleState?.[arenaKey];
                 if (!arenaState) {
                     alert('Esa arena no tiene estado cargado.');
                     return;
@@ -2627,10 +2650,10 @@ const saveProfile = (e) => {
 
                     setArenaBattleState((prev) => ({
                         ...prev,
-                        [arenaName]: normalizedState
+                        [arenaKey]: normalizedState
                     }));
 
-                    await db.ref(`arenaBattleState/${arenaName}`).set(normalizedState);
+                    await db.ref(`arenaBattleState/${arenaKey}`).set(normalizedState);
 
                     const affectedIds = [profileAId, profileBId].filter(Boolean);
                     await Promise.all(affectedIds.map(async (profileId) => {
@@ -3674,8 +3697,9 @@ const saveProfile = (e) => {
                             ))}
                         </select>
                         <button
-                            onClick={() => resetArenaScores(resetArenaTarget)}
+                            onClick={() => resetArenaScores(resetArenaTarget, selectedBattleScope)}
                             className="bg-red-500/20 text-red-300 border border-red-400/40 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-[0.16em] hover:bg-red-500 hover:text-white transition-all"
+                            disabled={!selectedBattleScope}
                         >
                             Confirmar reset item
                         </button>
@@ -3683,34 +3707,71 @@ const saveProfile = (e) => {
                 )}
                 <div>
                     <h2 className="text-4xl font-black italic text-white uppercase tracking-tighter">Arenas</h2>
-                    <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">Elegí uno de los 15 ítems para iniciar las batallas</p>
+                    <p className="text-xs font-bold text-[var(--metal-gold)] uppercase tracking-widest mt-1">
+                        {!selectedBattleScope
+                            ? 'Paso 1: elegí un modo de enfrentamiento'
+                            : `Paso 2: elegí uno de los 15 ítems · Modo: ${getBattleScopeLabel(selectedBattleScope)}`}
+                    </p>
                 </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
-                {ARENAS.map((arenaName) => (
+            {!selectedBattleScope && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+                    {BATTLE_SCOPES.map((scope) => (
+                        <button
+                            key={scope.id}
+                            onClick={() => setSelectedBattleScope(scope.id)}
+                            className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
+                        >
+                            <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Modo</p>
+                            <h3 className="text-2xl font-black italic text-white mt-2">{scope.label}</h3>
+                            <p className="text-xs text-slate-300 mt-2">{scope.description}</p>
+                        </button>
+                    ))}
+                </div>
+            )}
+
+            {selectedBattleScope && (
+                <div className="space-y-4">
+                    <div className="flex flex-wrap items-center gap-3">
+                        <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-300">
+                            Modo: {getBattleScopeLabel(selectedBattleScope)}
+                        </p>
+                        <button
+                            onClick={() => setSelectedBattleScope(null)}
+                            className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border theme-border-secondary text-[10px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] transition-all"
+                        >
+                            Cambiar modo
+                        </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6">
+                        {ARENAS.map((arenaName) => (
                     <button
                         key={arenaName}
                         onClick={() => {
                             setSelectedArena(arenaName);
-                            if (!arenaBattleState[arenaName]) initArenaBattle(arenaName);
+                            const arenaKey = getArenaBattleKey(arenaName, selectedBattleScope);
+                            if (!arenaBattleState[arenaKey]) initArenaBattle(arenaName, selectedBattleScope);
                         }}
                         className="theme-surface-card border theme-border-secondary rounded-2xl p-6 text-left hover:border-[var(--metal-gold)] hover:shadow-[0_0_20px_rgba(201,163,90,0.2)] transition-all"
                     >
                         <p className="text-[10px] font-black uppercase tracking-[0.28em] text-slate-500">Item</p>
                         <h3 className="text-2xl font-black italic text-white mt-2">{arenaName}</h3>
                     </button>
-                ))}
-            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
         </div>
     )}
 
     {activeTab === 'BATALLAS' && selectedArena && (() => {
-        const arenaState = arenaBattleState[selectedArena];
+        const arenaKey = getArenaBattleKey(selectedArena, selectedBattleScope);
+        const arenaState = arenaBattleState[arenaKey];
         const champion = perfiles.find(p => p.firebaseId === arenaState?.championId);
         const challenger = perfiles.find(p => p.firebaseId === arenaState?.challengerId);
-        const championStats = champion ? getArenaStats(selectedArena, champion.firebaseId) : null;
-        const challengerStats = challenger ? getArenaStats(selectedArena, challenger.firebaseId) : null;
+        const championStats = champion ? getArenaStats(selectedArena, champion.firebaseId, selectedBattleScope) : null;
+        const challengerStats = challenger ? getArenaStats(selectedArena, challenger.firebaseId, selectedBattleScope) : null;
 
         return (
             <div className="space-y-8 animate-in fade-in duration-500">
@@ -3722,6 +3783,16 @@ const saveProfile = (e) => {
                         >
                             <i data-lucide="arrow-left" className="w-4 h-4"></i>
                             Volver a arenas
+                        </button>
+                        <button
+                            onClick={() => {
+                                setSelectedArena(null);
+                                setSelectedBattleScope(null);
+                            }}
+                            className="group inline-flex items-center gap-2 px-4 py-2 rounded-xl border theme-border-secondary text-[11px] font-black uppercase tracking-[0.16em] text-[var(--metal-gold)] hover:border-[var(--metal-gold)] hover:bg-[var(--metal-bronze)]/10 transition-all"
+                        >
+                            <i data-lucide="refresh-ccw" className="w-4 h-4"></i>
+                            Cambiar modo
                         </button>
                         <button
                             onClick={() => setActiveTab('EXPLORAR')}
@@ -3758,7 +3829,7 @@ const saveProfile = (e) => {
                                             return (
                                                 <button
                                                     key={pairKey}
-                                                    onClick={() => resetSpecificBattle(selectedArena, profileAId, profileBId)}
+                                                    onClick={() => resetSpecificBattle(selectedArena, profileAId, profileBId, selectedBattleScope)}
                                                     className="w-full text-left px-3 py-2 rounded-xl border theme-border-secondary bg-slate-900/60 hover:border-red-300/70 transition-all"
                                                 >
                                                     <span className="text-xs text-white font-semibold">{labelA} vs {labelB}</span>
@@ -3775,7 +3846,7 @@ const saveProfile = (e) => {
                             {selectedArena}
                         </h2>
                         <p className="text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-slate-400 mt-1">
-                            Arena activa
+                            Arena activa · Modo: {getBattleScopeLabel(selectedBattleScope)}
                         </p>
                     </div>
                 </div>
@@ -3784,7 +3855,7 @@ const saveProfile = (e) => {
                     <div className="theme-surface-card border theme-border-secondary rounded-2xl p-8 text-center">
                         <p className="text-sm text-slate-300">Presioná para iniciar esta arena.</p>
                         <button
-                            onClick={() => initArenaBattle(selectedArena)}
+                            onClick={() => initArenaBattle(selectedArena, selectedBattleScope)}
                             className="mt-4 bg-[var(--metal-bronze)] text-white px-5 py-3 rounded-xl font-black uppercase text-xs tracking-[0.2em]"
                         >
                             Iniciar batallas
@@ -3802,7 +3873,7 @@ const saveProfile = (e) => {
                 {arenaState && champion && challenger && !arenaState.isFinished && (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
                         <button
-                            onClick={() => registerBattleWinner(selectedArena, champion.firebaseId)}
+                            onClick={() => registerBattleWinner(selectedArena, champion.firebaseId, selectedBattleScope)}
                             className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
                         >
                             <img
@@ -3830,7 +3901,7 @@ const saveProfile = (e) => {
                         </div>
 
                         <button
-                            onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId)}
+                            onClick={() => registerBattleWinner(selectedArena, challenger.firebaseId, selectedBattleScope)}
                             className="theme-surface-card border theme-border-secondary rounded-2xl p-8 hover:border-[var(--metal-gold)] transition-all text-left"
                         >
                             <img
