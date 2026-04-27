@@ -2370,24 +2370,100 @@ const saveProfile = (e) => {
                     orderedIds: groupedIds.flatMap((group) => group.ids)
                 };
             };
-            const findNextPendingPairInGroup = (groupIds = [], playedMatchups = {}) => {
-                for (let i = 0; i < groupIds.length - 1; i++) {
-                    for (let j = i + 1; j < groupIds.length; j++) {
-                        const key = [groupIds[i], groupIds[j]].sort().join('__');
-                        if (!playedMatchups[key]) return [groupIds[i], groupIds[j]];
-                    }
-                }
-                if (typeof rawRecord !== 'object') return null;
+            const getPairKey = (profileAId, profileBId) => [profileAId, profileBId].sort().join('__');
+            const normalizeMatchupRecord = (rawRecord) => {
+                if (!rawRecord || typeof rawRecord !== 'object') return null;
 
-                const winnerId = (rawRecord.winnerId || '').trim();
-                const loserId = (rawRecord.loserId || '').trim();
+                const winnerId = String(rawRecord.winnerId || '').trim();
+                const loserId = String(rawRecord.loserId || '').trim();
                 if (!winnerId || !loserId || winnerId === loserId) return null;
 
                 return {
                     winnerId,
                     loserId,
-                    reason: rawRecord.reason === 'transitive' ? 'transitive' : 'direct'
+                    reason: rawRecord.reason === 'transitive' ? 'transitive' : 'direct',
+                    playedAt: Number.isFinite(rawRecord.playedAt) ? rawRecord.playedAt : null
                 };
+            };
+            const isMatchupResolved = (playedMatchups = {}, key = '') => !!normalizeMatchupRecord(playedMatchups?.[key]);
+            const buildArenaDerivedState = (rawDirectMatchups = {}, orderedIds = []) => {
+                const allowedIds = new Set((orderedIds || []).filter(Boolean));
+                const nextDirectMatchups = {};
+                const nextMatchups = {};
+                const victoryGraphSets = {};
+
+                Object.entries(rawDirectMatchups || {}).forEach(([rawKey, rawRecord]) => {
+                    const normalizedRecord = normalizeMatchupRecord(rawRecord);
+                    if (!normalizedRecord) return;
+
+                    const { winnerId, loserId } = normalizedRecord;
+                    if (allowedIds.size && (!allowedIds.has(winnerId) || !allowedIds.has(loserId))) return;
+
+                    const pairKey = getPairKey(winnerId, loserId);
+                    const directRecord = {
+                        winnerId,
+                        loserId,
+                        reason: 'direct',
+                        playedAt: normalizedRecord.playedAt ?? Date.now()
+                    };
+
+                    nextDirectMatchups[pairKey] = directRecord;
+                    nextMatchups[pairKey] = directRecord;
+
+                    if (!victoryGraphSets[winnerId]) victoryGraphSets[winnerId] = new Set();
+                    victoryGraphSets[winnerId].add(loserId);
+                });
+
+                const graphNodes = new Set([
+                    ...Object.keys(victoryGraphSets),
+                    ...Object.values(victoryGraphSets).flatMap((set) => [...set])
+                ]);
+
+                graphNodes.forEach((originId) => {
+                    const queue = [...(victoryGraphSets[originId] || [])];
+                    const visited = new Set();
+
+                    while (queue.length) {
+                        const nodeId = queue.shift();
+                        if (!nodeId || visited.has(nodeId) || nodeId === originId) continue;
+                        visited.add(nodeId);
+
+                        const pairKey = getPairKey(originId, nodeId);
+                        if (!nextMatchups[pairKey]) {
+                            nextMatchups[pairKey] = {
+                                winnerId: originId,
+                                loserId: nodeId,
+                                reason: 'transitive',
+                                playedAt: null
+                            };
+                        }
+
+                        (victoryGraphSets[nodeId] || []).forEach((nextId) => {
+                            if (!visited.has(nextId)) queue.push(nextId);
+                        });
+                    }
+                });
+
+                const victoryGraph = Object.fromEntries(
+                    Object.entries(victoryGraphSets).map(([winnerId, losers]) => [winnerId, [...losers]])
+                );
+                const stats = rebuildArenaStatsFromMatchups(nextMatchups);
+
+                return {
+                    directMatchups: nextDirectMatchups,
+                    matchups: nextMatchups,
+                    victoryGraph,
+                    stats
+                };
+            };
+            const findNextPendingPairInGroup = (groupIds = [], playedMatchups = {}) => {
+                for (let i = 0; i < groupIds.length - 1; i++) {
+                    for (let j = i + 1; j < groupIds.length; j++) {
+                        const key = getPairKey(groupIds[i], groupIds[j]);
+                        if (!isMatchupResolved(playedMatchups, key)) return [groupIds[i], groupIds[j]];
+                    }
+                }
+                return null;
             };
             const findNextPendingPairByGroups = (groupedIds = [], playedMatchups = {}) => {
                 for (const group of groupedIds) {
@@ -2407,39 +2483,23 @@ const saveProfile = (e) => {
 
             const rebuildArenaStatsFromMatchups = (matchups = {}) => {
                 return Object.keys(matchups || {}).reduce((acc, key) => {
-                    const matchupValue = matchups[key];
+                    const matchupValue = normalizeMatchupRecord(matchups[key]);
                     if (!matchupValue) return acc;
-                    const [profileAId, profileBId] = String(key).split('__');
-                    if (!profileAId || !profileBId) return acc;
-                    const prevA = acc[profileAId] || { wins: 0, battles: 0 };
-                    const prevB = acc[profileBId] || { wins: 0, battles: 0 };
-                    const winnerId = matchupValue?.winnerId;
-
-                const nextStats = Object.values(nextMatchups).reduce((acc, matchupRecord) => {
-                    const normalizedRecord = normalizeMatchupRecord(matchupRecord);
-                    if (!normalizedRecord) return acc;
-                    const { winnerId, loserId } = normalizedRecord;
-                    const winnerPrev = acc[winnerId] || { wins: 0, battles: 0 };
-                    const loserPrev = acc[loserId] || { wins: 0, battles: 0 };
+                    const { winnerId, loserId } = matchupValue;
+                    const prevWinner = acc[winnerId] || { wins: 0, battles: 0 };
+                    const prevLoser = acc[loserId] || { wins: 0, battles: 0 };
                     return {
                         ...acc,
-                        [profileAId]: {
-                            wins: prevA.wins + (winnerId === profileAId ? 1 : 0),
-                            battles: prevA.battles + 1
+                        [winnerId]: {
+                            wins: prevWinner.wins + 1,
+                            battles: prevWinner.battles + 1
                         },
-                        [profileBId]: {
-                            wins: prevB.wins + (winnerId === profileBId ? 1 : 0),
-                            battles: prevB.battles + 1
+                        [loserId]: {
+                            wins: prevLoser.wins,
+                            battles: prevLoser.battles + 1
                         }
                     };
                 }, {});
-
-                return {
-                    directMatchups: nextDirectMatchups,
-                    matchups: nextMatchups,
-                    victoryGraph: nextVictoryGraph,
-                    stats: nextStats
-                };
             };
 
             const findNextPendingPair = (ids = [], playedMatchups = {}) => {
@@ -2460,8 +2520,8 @@ const saveProfile = (e) => {
                 const participants = buildArenaParticipants(perfiles, mode);
                 const groupedIds = participants.groupedIds || [];
                 const orderedIds = participants.orderedIds || [];
-                const stats = arenaState.stats || {};
-                const matchups = arenaState.matchups || {};
+                const derivedState = buildArenaDerivedState(arenaState.directMatchups || arenaState.matchups || {}, orderedIds);
+                const { directMatchups, matchups, victoryGraph, stats } = derivedState;
                 const currentChampionId = arenaState.championId;
                 const currentChallengerId = arenaState.challengerId;
                 const currentGroup = getGroupForPair(groupedIds, currentChampionId, currentChallengerId);
@@ -2470,7 +2530,7 @@ const saveProfile = (e) => {
                     !!currentChallengerId &&
                     currentChampionId !== currentChallengerId &&
                     !!currentGroup &&
-                    !matchups[[currentChampionId, currentChallengerId].sort().join('__')]
+                    !isMatchupResolved(matchups, getPairKey(currentChampionId, currentChallengerId))
                 );
                 const nextPendingPair = groupedIds.length ? findNextPendingPairByGroups(groupedIds, matchups) : null;
                 const nextPair = currentPairIsValid
@@ -2533,9 +2593,11 @@ const saveProfile = (e) => {
 
                 if (orderedProfiles.length < 2) return;
 
-                const orderedIds = orderedProfiles.map(p => p.firebaseId);
-                const matchups = {};
-                const initialPair = findNextPendingPairByGroups(groupedIds, matchups);
+                const participants = buildArenaParticipants(orderedProfiles, arenaParticipantMode);
+                const groupedIds = participants.groupedIds || [];
+                const orderedIds = participants.orderedIds || [];
+                const derivedState = buildArenaDerivedState({}, orderedIds);
+                const initialPair = findNextPendingPairByGroups(groupedIds, derivedState.matchups);
                 if (!initialPair) return;
                 const activeGroup = getGroupForPair(groupedIds, initialPair[0], initialPair[1]);
 
@@ -2582,29 +2644,23 @@ const saveProfile = (e) => {
                 const groupedIds = Array.isArray(state.groupedIds) && state.groupedIds.length
                     ? state.groupedIds
                     : buildArenaParticipants(perfiles, state.mode || 'GENERAL').groupedIds;
-                const { championId, challengerId, matchups = {}, stats = {} } = state;
+                const { championId, challengerId } = state;
                 if (winnerId !== championId && winnerId !== challengerId) return;
                 const loserId = winnerId === championId ? challengerId : championId;
                 if (!winnerId || !loserId) return;
 
-                const pairKey = [winnerId, loserId].sort().join('__');
-                const updatedMatchups = {
-                    ...matchups,
+                const pairKey = getPairKey(winnerId, loserId);
+                const updatedDirectMatchups = {
+                    ...(state.directMatchups || {}),
                     [pairKey]: {
                         winnerId,
                         loserId,
+                        reason: 'direct',
                         playedAt: Date.now()
                     }
                 };
 
-                const prevWinner = stats[winnerId] || { wins: 0, battles: 0 };
-                const prevLoser = stats[loserId] || { wins: 0, battles: 0 };
-                const updatedStats = {
-                    ...stats,
-                    [winnerId]: { wins: prevWinner.wins + 1, battles: prevWinner.battles + 1 },
-                    [loserId]: { wins: prevLoser.wins, battles: prevLoser.battles + 1 }
-                };
-                const derivedState = buildArenaDerivedState(updatedDirectMatchups, orderedIds);
+                const derivedState = buildArenaDerivedState(updatedDirectMatchups, state.orderedIds || []);
                 const updatedMatchups = derivedState.matchups;
                 const updatedStats = derivedState.stats;
                 const affectedProfileIds = new Set(
@@ -2657,6 +2713,7 @@ const saveProfile = (e) => {
                 const nextArenaState = {
                     ...state,
                     groupedIds,
+                    directMatchups: updatedDirectMatchups,
                     stats: updatedStats,
                     matchups: updatedMatchups,
                     victoryGraph: derivedState.victoryGraph,
