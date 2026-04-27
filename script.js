@@ -2852,6 +2852,7 @@ const saveProfile = (e) => {
 
                 const derivedState = buildArenaDerivedState(updatedDirectMatchups, getArenaOrderedProfileIds(perfiles));
                 const updatedMatchups = derivedState.matchups;
+                const updatedStats = derivedState.stats || {};
 
                 const winnerGroup = getGroupForPair(groupedIds, winnerId, loserId);
                 const findNextOpponentForWinner = (ids, currentWinnerId, playedMatchups) => {
