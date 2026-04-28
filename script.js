@@ -4751,7 +4751,7 @@ const saveProfile = (e) => {
             )}
 
             {selectedGalleryPhoto && (
-                <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={closeGalleryViewer}>
+                <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-2 sm:p-8" onClick={closeGalleryViewer}>
                     <button
                         type="button"
                         onClick={closeGalleryViewer}
@@ -4761,13 +4761,13 @@ const saveProfile = (e) => {
                         <span className="text-[26px] leading-none font-black">✕</span>
                     </button>
 
-                    <div className="w-full max-w-6xl max-h-full flex flex-col gap-4" onClick={(event) => event.stopPropagation()}>
-                        <div className="flex items-center justify-between gap-4 px-1 sm:px-2">
-                            <div>
-                                <p className="text-2xl sm:text-3xl font-black italic text-white tracking-tighter">{selectedGalleryPhoto.nombre}</p>
-                                <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.3em] text-[var(--metal-gold)] mt-2">{selectedGalleryPhoto.profesion}{selectedGalleryPhoto.nacionalidad ? ` · ${selectedGalleryPhoto.nacionalidad}` : ''}</p>
+                    <div className="w-full max-w-6xl max-h-[100dvh] h-full flex flex-col gap-3 sm:gap-4" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 px-1 sm:px-2">
+                            <div className="min-w-0">
+                                <p className="text-xl sm:text-3xl font-black italic text-white tracking-tighter truncate">{selectedGalleryPhoto.nombre}</p>
+                                <p className="text-[9px] sm:text-xs font-black uppercase tracking-[0.24em] sm:tracking-[0.3em] text-[var(--metal-gold)] mt-1.5 sm:mt-2 truncate">{selectedGalleryPhoto.profesion}{selectedGalleryPhoto.nacionalidad ? ` · ${selectedGalleryPhoto.nacionalidad}` : ''}</p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                                 {filteredGalleryPhotos.length > 1 && (
                                     <>
                                         <button
@@ -4803,7 +4803,7 @@ const saveProfile = (e) => {
                             </div>
                         </div>
 
-                        <div className="relative flex-1 min-h-0 rounded-[2rem] overflow-hidden border theme-border-secondary bg-black/50">
+                        <div className="relative flex-1 min-h-0 rounded-[1.25rem] sm:rounded-[2rem] overflow-hidden border theme-border-secondary bg-black/50">
                             {selectedGalleryPhoto.type === 'video' ? (() => {
                                 const embedInfo = getVideoEmbedInfo(selectedGalleryPhoto.url);
                                 if (embedInfo) {
@@ -4811,7 +4811,7 @@ const saveProfile = (e) => {
                                         <iframe
                                             src={embedInfo.src}
                                             title={`${selectedGalleryPhoto.nombre} video`}
-                                            className="w-full h-[calc(100vh-14rem)] bg-black"
+                                            className="w-full h-[calc(100dvh-16rem)] sm:h-[calc(100dvh-14rem)] bg-black"
                                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                                             allowFullScreen
                                         />
@@ -4833,14 +4833,14 @@ const saveProfile = (e) => {
                                                 showNextGalleryPhoto();
                                             }
                                         }}
-                                        className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
+                                        className="w-full h-[calc(100dvh-16rem)] sm:h-[calc(100dvh-14rem)] object-contain bg-black"
                                     />
                                 );
                             })() : (
                                 <img
     src={getSafeImageSrc(selectedGalleryPhoto.url, CRYING_EMOJI_FALLBACK)}
     alt={`${selectedGalleryPhoto.nombre} - ${selectedGalleryPhoto.label || 'galería'}`}
-    className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
+    className="w-full h-[calc(100dvh-16rem)] sm:h-[calc(100dvh-14rem)] object-contain bg-black"
     onError={(e) => {
         // 1. Aplicamos el fallback visual por si acaso
         applyCryingEmojiFallback(e);
@@ -4928,7 +4928,7 @@ const saveProfile = (e) => {
             )}
 
             {selectedScenePhoto && (
-                <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-4 sm:p-8" onClick={closeSceneViewer}>
+                <div className="fixed inset-0 z-[120] bg-slate-950/95 backdrop-blur-xl flex items-center justify-center p-2 sm:p-8" onClick={closeSceneViewer}>
                     <button
                         type="button"
                         onClick={closeSceneViewer}
@@ -4938,13 +4938,13 @@ const saveProfile = (e) => {
                         <span className="text-[26px] leading-none font-black">✕</span>
                     </button>
 
-                    <div className="w-full max-w-6xl max-h-full flex flex-col gap-4" onClick={(event) => event.stopPropagation()}>
-                        <div className="flex items-center justify-between gap-4 px-1 sm:px-2">
-                            <div>
-                                <p className="text-2xl sm:text-3xl font-black italic text-white tracking-tighter">{selectedScenePhoto.nombre}</p>
-                                <p className="text-[10px] sm:text-xs font-black uppercase tracking-[0.3em] text-[var(--metal-gold)] mt-2">{selectedScenePhoto.profesion}{selectedScenePhoto.nacionalidad ? ` · ${selectedScenePhoto.nacionalidad}` : ''}</p>
+                    <div className="w-full max-w-6xl max-h-[100dvh] h-full flex flex-col gap-3 sm:gap-4" onClick={(event) => event.stopPropagation()}>
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 px-1 sm:px-2">
+                            <div className="min-w-0">
+                                <p className="text-xl sm:text-3xl font-black italic text-white tracking-tighter truncate">{selectedScenePhoto.nombre}</p>
+                                <p className="text-[9px] sm:text-xs font-black uppercase tracking-[0.24em] sm:tracking-[0.3em] text-[var(--metal-gold)] mt-1.5 sm:mt-2 truncate">{selectedScenePhoto.profesion}{selectedScenePhoto.nacionalidad ? ` · ${selectedScenePhoto.nacionalidad}` : ''}</p>
                             </div>
-                            <div className="flex items-center gap-3">
+                            <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                                 {sceneMediaPhotos.length > 1 && (
                                     <>
                                         <button
@@ -4979,7 +4979,7 @@ const saveProfile = (e) => {
                                 </div>
                             </div>
                         </div>
-                        <div className="relative flex-1 min-h-0 rounded-[2rem] overflow-hidden border theme-border-secondary bg-black/50">
+                        <div className="relative flex-1 min-h-0 rounded-[1.25rem] sm:rounded-[2rem] overflow-hidden border theme-border-secondary bg-black/50">
                             {selectedScenePhoto.type === 'video' ? (() => {
                                 const embedInfo = getVideoEmbedInfo(selectedScenePhoto.url);
                                 if (embedInfo) {
@@ -4987,7 +4987,7 @@ const saveProfile = (e) => {
                                         <iframe
                                             src={embedInfo.src}
                                             title={`${selectedScenePhoto.nombre} video`}
-                                            className="w-full h-[calc(100vh-14rem)] bg-black"
+                                            className="w-full h-[calc(100dvh-16rem)] sm:h-[calc(100dvh-14rem)] bg-black"
                                             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                                             allowFullScreen
                                         />
@@ -5009,14 +5009,14 @@ const saveProfile = (e) => {
                                                 showNextScenePhoto();
                                             }
                                         }}
-                                        className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
+                                        className="w-full h-[calc(100dvh-16rem)] sm:h-[calc(100dvh-14rem)] object-contain bg-black"
                                     />
                                 );
                             })() : (
                                 <img
                                     src={getSafeImageSrc(selectedScenePhoto.url, CRYING_EMOJI_FALLBACK)}
                                     alt={`${selectedScenePhoto.nombre} - ${selectedScenePhoto.label || 'escena'}`}
-                                    className="w-full h-[calc(100vh-14rem)] object-contain bg-black"
+                                    className="w-full h-[calc(100dvh-16rem)] sm:h-[calc(100dvh-14rem)] object-contain bg-black"
                                     onError={(e) => {
                                         applyCryingEmojiFallback(e);
                                         if (sceneMediaPhotos.length > 1) {
